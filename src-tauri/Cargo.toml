@@ -1,0 +1,36 @@
+[package]
+name = "clidesk"
+version = "0.1.0"
+description = "CliDesk - Local desktop dashboard for managing terminal sessions"
+authors = ["PC"]
+edition = "2021"
+
+[lib]
+name = "clidesk_lib"
+crate-type = ["staticlib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = ["tray-icon"] }
+tauri-plugin-opener = "2"
+tauri-plugin-dialog = "2"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+rusqlite = { version = "0.31", features = ["bundled"] }
+uuid = { version = "1", features = ["v4"] }
+chrono = { version = "0.4", features = ["serde"] }
+tokio = { version = "1", features = ["full"] }
+log = "0.4"
+portable-pty = "0.8"
+anyhow = "1"
+
+[target.'cfg(target_os = "windows")'.dependencies]
+windows-sys = { version = "0.52", features = [
+  "Win32_Foundation",
+  "Win32_Security",
+  "Win32_UI_Shell",
+  "Win32_System_Threading",
+] }
+libc = "0.2"
