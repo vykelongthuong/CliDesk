@@ -1,22 +1,38 @@
-import React, { useState, useEffect, useCallback } from 'react';
-import type { Project, GitStatus, GitFileStatus, GitDiffResult, Language } from '../types';
-import { getGitStatus, getGitDiff } from '../lib/commands';
+import React, { useState, useCallback, useMemo } from 'react';
+import type {
+  Project,
+  GitStatus,
+  GitFileStatus,
+  GitDiffResult,
+  Language,
+  GitLoadState,
+} from '../types';
+import { getGitDiff } from '../lib/commands';
 import { translate } from '../lib/i18n';
+import { normalizeError } from '../lib/utils';
 
 interface GitPanelProps {
   activeProject: Project;
   onOpenFile: (relativePath: string) => void;
   lang: Language;
+  gitState: GitLoadState;
+  gitStatus: GitStatus | null;
+  gitError: string | null;
+  skippedUntracked: boolean;
+  onLoadGit: () => void;
+  onRefreshGit: () => void;
 }
 
+const MAX_RENDER_FILES = 200;
+
 const statusIcons: Record<string, string> = {
-  modified: '📝',
-  added: '✅',
-  deleted: '🗑️',
-  renamed: '📋',
-  untracked: '❓',
-  conflicted: '⚠️',
-  unknown: '❔',
+  modified: '\u{1F4DD}',
+  added: '\u{2705}',
+  deleted: '\u{1F5D1}\u{FE0F}',
+  renamed: '\u{1F4CB}',
+  untracked: '\u{2753}',
+  conflicted: '\u{26A0}\u{FE0F}',
+  unknown: '\u{2754}',
 };
 
 const statusColors: Record<string, string> = {
@@ -29,32 +45,21 @@ const statusColors: Record<string, string> = {
   unknown: '#a6adc8',
 };
 
-const GitPanel: React.FC<GitPanelProps> = ({ activeProject, onOpenFile, lang }) => {
-  const [gitStatus, setGitStatus] = useState<GitStatus | null>(null);
-  const [loading, setLoading] = useState(true);
+const GitPanel: React.FC<GitPanelProps> = ({
+  activeProject,
+  onOpenFile,
+  lang,
+  gitState,
+  gitStatus,
+  gitError,
+  skippedUntracked,
+  onLoadGit,
+  onRefreshGit,
+}) => {
   const [diffContent, setDiffContent] = useState<GitDiffResult | null>(null);
   const [diffLoading, setDiffLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
 
   const t = useCallback((key: string) => translate(key, lang), [lang]);
-
-  const loadStatus = useCallback(async () => {
-    setLoading(true);
-    setError(null);
-    try {
-      const status = await getGitStatus(activeProject.id);
-      setGitStatus(status);
-    } catch (err: any) {
-      setError(err?.message || t('git.unable'));
-      setGitStatus(null);
-    } finally {
-      setLoading(false);
-    }
-  }, [activeProject.id]);
-
-  useEffect(() => {
-    loadStatus();
-  }, [loadStatus]);
 
   const handleViewDiff = async (file: GitFileStatus) => {
     setDiffLoading(true);
@@ -62,8 +67,8 @@ const GitPanel: React.FC<GitPanelProps> = ({ activeProject, onOpenFile, lang }) 
     try {
       const diff = await getGitDiff(activeProject.id, file.path);
       setDiffContent(diff);
-    } catch (err: any) {
-      console.error('Failed to load diff:', err);
+    } catch (err: unknown) {
+      console.error('Failed to load diff:', normalizeError(err));
     } finally {
       setDiffLoading(false);
     }
@@ -81,32 +86,69 @@ const GitPanel: React.FC<GitPanelProps> = ({ activeProject, onOpenFile, lang }) 
     return groups;
   };
 
-  if (loading) {
+  const groupedFiles = useMemo(() => {
+    if (!gitStatus?.files) return {};
+    const files = gitStatus.files.length > MAX_RENDER_FILES
+      ? gitStatus.files.slice(0, MAX_RENDER_FILES)
+      : gitStatus.files;
+    return groupFilesByStatus(files);
+  }, [gitStatus?.files]);
+
+  const totalChanges = gitStatus?.files.length ?? 0;
+  const truncated = totalChanges > MAX_RENDER_FILES;
+
+  // ---- Idle: user hasn't clicked Load Git yet ----
+  if (gitState === 'idle') {
     return (
       <div className="git-panel">
+        <div className="git-idle">
+          <div className="git-idle-icon">{'\u{2387}'}</div>
+          <h3 className="git-idle-title">{t('git.idle_title')}</h3>
+          <p className="git-idle-desc">{t('git.idle_desc')}</p>
+          <button className="git-load-btn" onClick={onLoadGit}>
+            {t('git.load')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
+  // ---- Loading ----
+  if (gitState === 'loading') {
+    return (
+      <div className="git-panel">
+        <div className="git-header">
+          <h3>{t('git.title')}</h3>
+        </div>
         <div className="git-loading">{t('git.loading')}</div>
       </div>
     );
   }
 
-  if (error) {
+  // ---- Error ----
+  if (gitState === 'error') {
+    const isTimeout = gitError?.toLowerCase().includes('timeout') || gitError?.toLowerCase().includes('too long');
     return (
       <div className="git-panel">
         <div className="git-header">
           <h3>{t('git.title')}</h3>
-          <button className="toolbar-btn" onClick={loadStatus}>{t('git.refresh')}</button>
+          <button className="toolbar-btn" onClick={onRefreshGit}>{t('git.retry')}</button>
         </div>
-        <div className="git-error">{error}</div>
+        <div className="git-error">
+          {isTimeout ? t('git.timeout') : `${t('git.unable')}: ${gitError}`}
+        </div>
       </div>
     );
   }
 
+  // ---- Loaded ----
   if (!gitStatus) {
+    // Should not happen in "loaded" state, but handle gracefully
     return (
       <div className="git-panel">
         <div className="git-header">
           <h3>{t('git.title')}</h3>
-          <button className="toolbar-btn" onClick={loadStatus}>{t('git.refresh')}</button>
+          <button className="toolbar-btn" onClick={onRefreshGit}>{t('git.refresh')}</button>
         </div>
         <div className="git-empty">{t('git.unable')}</div>
       </div>
@@ -118,6 +160,7 @@ const GitPanel: React.FC<GitPanelProps> = ({ activeProject, onOpenFile, lang }) 
       <div className="git-panel">
         <div className="git-header">
           <h3>{t('git.title')}</h3>
+          <button className="toolbar-btn" onClick={onRefreshGit}>{t('git.reload')}</button>
         </div>
         <div className="git-not-repo">
           <p>{t('git.not_repo')}</p>
@@ -126,24 +169,29 @@ const GitPanel: React.FC<GitPanelProps> = ({ activeProject, onOpenFile, lang }) 
     );
   }
 
-  const groupedFiles = groupFilesByStatus(gitStatus.files);
-  const totalChanges = gitStatus.files.length;
-
   return (
     <div className="git-panel">
       <div className="git-header">
         <div className="git-branch-info">
-          <span className="git-branch-icon">⎇</span>
+          <span className="git-branch-icon">{'\u{2387}'}</span>
           <span className="git-branch-name">{gitStatus.branch || 'unknown'}</span>
           {(gitStatus.ahead || gitStatus.behind) && (
             <span className="git-branch-stats">
-              {gitStatus.ahead ? `↑${gitStatus.ahead}` : ''}
-              {gitStatus.behind ? `↓${gitStatus.behind}` : ''}
+              {gitStatus.ahead ? `\u{2191}${gitStatus.ahead}` : ''}
+              {gitStatus.behind ? `\u{2193}${gitStatus.behind}` : ''}
             </span>
           )}
         </div>
-        <button className="toolbar-btn" onClick={loadStatus} title={t('git.refresh')}>{t('git.refresh')}</button>
+        <button className="toolbar-btn" onClick={onRefreshGit} title={t('git.refresh')}>{t('git.refresh')}</button>
       </div>
+
+      {skippedUntracked && (
+        <div className="git-skipped-banner">{t('git.skipped_untracked')}</div>
+      )}
+
+      {truncated && (
+        <div className="git-skipped-banner">{t('git.too_many_files')}</div>
+      )}
 
       <div className="git-status-summary">
         {totalChanges > 0 ? (
@@ -158,7 +206,7 @@ const GitPanel: React.FC<GitPanelProps> = ({ activeProject, onOpenFile, lang }) 
           {Object.entries(groupedFiles).map(([status, files]) => (
             <div key={status} className="git-status-group">
               <div className="git-group-header">
-                <span className="git-group-icon">{statusIcons[status] || '❔'}</span>
+                <span className="git-group-icon">{statusIcons[status] || '\u{2754}'}</span>
                 <span style={{ color: statusColors[status] || '#cdd6f4' }}>
                   {status.charAt(0).toUpperCase() + status.slice(1)}
                 </span>

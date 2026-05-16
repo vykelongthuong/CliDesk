@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import type { Project, Language } from '../types';
 import { addProject, removeProject } from '../lib/commands';
 import { open } from '@tauri-apps/plugin-dialog';
+import { getProjectColor } from '../lib/projectColors';
 import { translate } from '../lib/i18n';
 
 interface SidebarProps {
@@ -35,7 +36,7 @@ const Sidebar: React.FC<SidebarProps> = ({
       const selectedPath = await open({
         directory: true,
         multiple: false,
-        title: 'Select Project Folder',
+        title: t('sidebar.select_folder'),
       });
       if (selectedPath) {
         const project = await addProject(selectedPath);
@@ -103,10 +104,10 @@ const Sidebar: React.FC<SidebarProps> = ({
               <li
                 key={project.id}
                 className={`project-item ${activeProjectId === project.id ? 'active' : ''}`}
-                onClick={() => onSelectProject(project.id)}
+                onClick={() => onSelectProject(project.id)} style={{ '--project-color': getProjectColor(project) } as React.CSSProperties}
                 title={collapsed ? project.name : undefined}
               >
-                <div className="project-icon">
+                <div className="project-icon" style={{ backgroundColor: getProjectColor(project) }}>
                   {project.name.charAt(0).toUpperCase()}
                 </div>
                 {!collapsed && (
@@ -118,7 +119,7 @@ const Sidebar: React.FC<SidebarProps> = ({
                     <button
                       className="project-remove-btn"
                       onClick={(e) => handleRemoveProject(e, project.id)}
-                      title="Remove from dashboard"
+                      title={t('sidebar.remove_project')}
                     >
                       &times;
                     </button>

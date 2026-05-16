@@ -1,4 +1,4 @@
-import React, { useState, useCallback, useEffect, useRef } from 'react';
+﻿import React, { useState, useCallback, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Workspace from './components/Workspace';
 import type { Project, Language } from './types';
@@ -172,3 +172,4 @@ const App: React.FC = () => {
 };
 
 export default App;
+

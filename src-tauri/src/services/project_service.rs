@@ -99,6 +99,25 @@ impl ProjectService {
         })
     }
 
+
+    pub fn get_project_by_id(conn: &Connection, project_id: &str) -> Result<Project, AppError> {
+        let mut stmt = conn
+            .prepare("SELECT id, name, path, created_at, updated_at, last_opened_at FROM projects WHERE id = ?1")
+            .map_err(|e| AppError::new("DB_QUERY_ERROR", &format!("Failed to query project: {}", e)))?;
+
+        stmt.query_row(rusqlite::params![project_id], |row| {
+            Ok(Project {
+                id: row.get(0)?,
+                name: row.get(1)?,
+                path: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
+                last_opened_at: row.get(5)?,
+            })
+        })
+        .map_err(|e| AppError::new("PROJECT_NOT_FOUND", &format!("Project not found: {}", e)))
+    }
+
     pub fn remove_project(conn: &Connection, project_id: &str) -> Result<(), AppError> {
         conn.execute("DELETE FROM projects WHERE id = ?1", rusqlite::params![project_id])
             .map_err(|e| AppError::new("DB_DELETE_ERROR", &format!("Failed to delete project: {}", e)))?;
@@ -114,23 +133,6 @@ impl ProjectService {
         )
         .map_err(|e| AppError::new("DB_UPDATE_ERROR", &format!("Failed to update project: {}", e)))?;
 
-        let mut stmt = conn
-            .prepare("SELECT id, name, path, created_at, updated_at, last_opened_at FROM projects WHERE id = ?1")
-            .map_err(|e| AppError::new("DB_QUERY_ERROR", &format!("Failed to query project: {}", e)))?;
-
-        let project = stmt
-            .query_row(rusqlite::params![project_id], |row| {
-                Ok(Project {
-                    id: row.get(0)?,
-                    name: row.get(1)?,
-                    path: row.get(2)?,
-                    created_at: row.get(3)?,
-                    updated_at: row.get(4)?,
-                    last_opened_at: row.get(5)?,
-                })
-            })
-            .map_err(|e| AppError::new("PROJECT_NOT_FOUND", &format!("Project not found: {}", e)))?;
-
-        Ok(project)
+        Self::get_project_by_id(conn, project_id)
     }
 }

@@ -36,6 +36,10 @@ lerna-debug.log*
 Thumbs.db
 elevated_test.bat
 
+# ── AI assistant config ──────────────────────────────
+.claude/
+.deepseek/
+
 # ── Editor directories and files ─────────────────────
 .vscode/*
 !.vscode/extensions.json

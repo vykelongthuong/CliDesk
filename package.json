@@ -11,10 +11,13 @@
     "preview": "vite preview",
     "typecheck": "tsc --noEmit",
     "tauri": "tauri",
-    "build:win": "tauri build --target x86_64-pc-windows-msvc"
+    "build:win": "tauri build --target x86_64-pc-windows-msvc --no-bundle",
+    "clean:build": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue; Remove-Item -Recurse -Force src-tauri\\target -ErrorAction SilentlyContinue\"",
+    "build:portable": "tauri build --target x86_64-pc-windows-msvc --no-bundle"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
+    "monaco-editor": "^0.52.2",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2",
@@ -22,6 +25,8 @@
     "@xterm/xterm": "^6.0.0",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
+    "react-markdown": "^10.1.0",
+    "remark-gfm": "^4.0.1",
     "uuid": "^14.0.0"
   },
   "devDependencies": {

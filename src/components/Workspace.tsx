@@ -4,8 +4,11 @@ import FileExplorer from './FileExplorer';
 import EditorPanel from './EditorPanel';
 import GitPanel from './GitPanel';
 import SettingsPanel from './SettingsPanel';
-import type { Project, OpenEditorTab, Language } from '../types';
+import type { Project, OpenEditorTab, Language, TerminalTab, GitCacheEntry, GitLoadState } from '../types';
+import { getProjectColor } from '../lib/projectColors';
 import { translate } from '../lib/i18n';
+import { getGitStatus } from '../lib/commands';
+import { normalizeError } from '../lib/utils';
 
 type TabId = 'terminals' | 'files' | 'git' | 'settings';
 
@@ -18,28 +21,103 @@ interface WorkspaceProps {
 }
 
 const Workspace: React.FC<WorkspaceProps> = ({ activeProject, activeTab, onTabChange, lang, onLanguageChange }) => {
-  const [terminalIds, setTerminalIds] = useState<string[]>([]);
+  const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([]);
   const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
   const [editorTabs, setEditorTabs] = useState<OpenEditorTab[]>([]);
   const [activeEditorPath, setActiveEditorPath] = useState<string | null>(null);
   const terminalCountRef = useRef(0);
+  const [gitCache, setGitCache] = useState<Record<string, GitCacheEntry>>({});
+  const loadingProjectRef = useRef<string | null>(null);
 
-  const handleNewTerminal = useCallback(() => {
-    terminalCountRef.current += 1;
-    const tempId = `new-${terminalCountRef.current}`;
-    setTerminalIds(prev => [...prev, tempId]);
-    setActiveTerminalId(tempId);
-    
-    // After workspace renders, the terminal will spawn via backend
+  // Load Git status for a project (only called manually by user action)
+  const loadGitForProject = useCallback(async (projectId: string) => {
+    // Prevent duplicate concurrent requests for the same project
+    setGitCache(prev => {
+      const entry = prev[projectId];
+      if (entry?.state === 'loading') return prev;
+      return {
+        ...prev,
+        [projectId]: { state: 'loading' as GitLoadState, status: null, error: null },
+      };
+    });
+
+    loadingProjectRef.current = projectId;
+
+    try {
+      const status = await getGitStatus(projectId);
+      if (loadingProjectRef.current !== projectId) return;
+      setGitCache(prev => ({
+        ...prev,
+        [projectId]: {
+          state: 'loaded' as GitLoadState,
+          status,
+          error: null,
+          loadedAt: Date.now(),
+          slowMode: status.slow_mode ?? false,
+          skippedUntracked: status.skipped_untracked ?? false,
+        },
+      }));
+    } catch (err: unknown) {
+      if (loadingProjectRef.current !== projectId) return;
+      const msg = normalizeError(err);
+      setGitCache(prev => ({
+        ...prev,
+        [projectId]: {
+          state: 'error' as GitLoadState,
+          status: null,
+          error: msg,
+          loadedAt: Date.now(),
+        },
+      }));
+    }
   }, []);
 
+  // User clicks "Load Git" — initial load
+  const handleLoadGit = useCallback(() => {
+    if (activeProject) {
+      loadGitForProject(activeProject.id);
+    }
+  }, [activeProject, loadGitForProject]);
+
+  // User clicks "Refresh" — force reload (works for loaded, error, and even not-repo state)
+  const handleRefreshGit = useCallback(() => {
+    if (activeProject) {
+      loadGitForProject(activeProject.id);
+    }
+  }, [activeProject, loadGitForProject]);
+
+  // Derive the Git entry for the active project
+  const activeGitEntry: GitCacheEntry = activeProject
+    ? (gitCache[activeProject.id] ?? { state: 'idle', status: null, error: null })
+    : { state: 'idle', status: null, error: null };
+
+  const handleNewTerminal = useCallback((options?: { elevated?: boolean }) => {
+    if (!activeProject) return;
+
+    terminalCountRef.current += 1;
+    const tempId = `new-${terminalCountRef.current}`;
+    const projectColor = getProjectColor(activeProject);
+
+    setTerminalTabs(prev => [
+      ...prev,
+      {
+        id: tempId,
+        projectId: activeProject.id,
+        projectName: activeProject.name,
+        projectPath: activeProject.path,
+        projectColor,
+        elevated: options?.elevated ?? false,
+      },
+    ]);
+    setActiveTerminalId(tempId);
+  }, [activeProject]);
+
   const handleCloseTerminal = useCallback((id: string) => {
-    setTerminalIds(prev => prev.filter(tid => tid !== id));
+    setTerminalTabs(prev => prev.filter(t => t.id !== id));
     setActiveTerminalId(prev => prev === id ? null : prev);
   }, []);
 
   const handleOpenFile = useCallback(async (relativePath: string) => {
-    // Check if already open
     const existing = editorTabs.find(t => t.relativePath === relativePath);
     if (existing) {
       setActiveEditorPath(relativePath);
@@ -94,13 +172,11 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProject, activeTab, onTabCh
     );
   }, []);
 
-  // Tabs configuration — Settings is now in sidebar, not here
   const tabs: { id: TabId; labelKey: string }[] = [
     { id: 'terminals', labelKey: 'tab.terminals' },
     { id: 'files', labelKey: 'tab.files' },
     { id: 'git', labelKey: 'tab.git' },
   ];
-
 
   const t = (key: string) => translate(key, lang);
 
@@ -140,20 +216,18 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProject, activeTab, onTabCh
             onClick={() => onTabChange(tab.id)}
           >
             {t(tab.labelKey)}
-            {tab.id === 'terminals' && terminalIds.length > 0 && (
-              <span className="tab-badge">{terminalIds.length}</span>
+            {tab.id === 'terminals' && terminalTabs.length > 0 && (
+              <span className="tab-badge">{terminalTabs.length}</span>
             )}
           </button>
         ))}
       </div>
 
       <div className="workspace-content">
-        {/* Always render all panels — use CSS display:none to hide inactive ones.
-            This keeps xterm instances & backend terminals alive when switching tabs. */}
         <div className={`workspace-panel ${activeTab === 'terminals' ? 'active' : ''}`}>
           <TerminalPane
             activeProject={activeProject}
-            terminalIds={terminalIds}
+            terminalTabs={terminalTabs}
             activeTerminalId={activeTerminalId}
             onNewTerminal={handleNewTerminal}
             onCloseTerminal={handleCloseTerminal}
@@ -167,6 +241,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProject, activeTab, onTabCh
             <FileExplorer
               activeProject={activeProject}
               onOpenFile={handleOpenFile}
+              isActive={activeTab === 'files'}
               lang={lang}
             />
             <EditorPanel
@@ -185,7 +260,17 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProject, activeTab, onTabCh
         </div>
 
         <div className={`workspace-panel ${activeTab === 'git' ? 'active' : ''}`}>
-          <GitPanel activeProject={activeProject} onOpenFile={handleOpenFile} lang={lang} />
+          <GitPanel
+            activeProject={activeProject}
+            onOpenFile={handleOpenFile}
+            lang={lang}
+            gitState={activeGitEntry.state}
+            gitStatus={activeGitEntry.status}
+            gitError={activeGitEntry.error}
+            skippedUntracked={activeGitEntry.skippedUntracked ?? false}
+            onLoadGit={handleLoadGit}
+            onRefreshGit={handleRefreshGit}
+          />
         </div>
 
         <div className={`workspace-panel ${activeTab === 'settings' ? 'active' : ''}`}>

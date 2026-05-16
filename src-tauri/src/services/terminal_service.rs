@@ -404,14 +404,10 @@ impl TerminalService {
         }
     }
 
-    /// Kill a specific terminal by removing its PTY session.
-    /// The child process will be orphaned; portable-pty cleans up via drop on Unix,
-    /// on Windows the pseudo-console is closed which terminates the child.
-    pub fn kill_terminal(&self, terminal_id: &str) -> Result<(), AppError> {
-        // Remove the PTY session (drops the master_pty & writer, closing handles)
+    /// Stop a terminal process but keep its session metadata for the UI.
+    pub fn stop_terminal(&self, terminal_id: &str) -> Result<(), AppError> {
         self.pty_sessions.lock().unwrap().remove(terminal_id);
 
-        // Mark the session as killed
         let mut sessions = self.sessions.lock().unwrap();
         if let Some(session) = sessions.get_mut(terminal_id) {
             session.status = TerminalStatus::Killed;
@@ -422,21 +418,42 @@ impl TerminalService {
             ));
         }
 
-        log::info!("Terminal {} killed", terminal_id);
+        log::info!("Terminal {} stopped", terminal_id);
         Ok(())
     }
 
-    /// Kill all running terminals.
+    /// Close a terminal completely, removing process state and session metadata.
+    pub fn close_terminal(&self, terminal_id: &str) -> Result<(), AppError> {
+        self.pty_sessions.lock().unwrap().remove(terminal_id);
+
+        let removed = self.sessions.lock().unwrap().remove(terminal_id);
+        if removed.is_none() {
+            return Err(AppError::new(
+                "TERMINAL_NOT_FOUND",
+                &format!("Terminal '{}' not found", terminal_id),
+            ));
+        }
+
+        log::info!("Terminal {} closed", terminal_id);
+        Ok(())
+    }
+
+    /// Backward-compatible stop operation for existing callers.
+    pub fn kill_terminal(&self, terminal_id: &str) -> Result<(), AppError> {
+        self.stop_terminal(terminal_id)
+    }
+
+    /// Kill all running terminals and clear session metadata.
     pub fn kill_all(&self) -> u32 {
-        let count = self.pty_sessions.lock().unwrap().len() as u32;
+        let pty_count = self.pty_sessions.lock().unwrap().len() as u32;
         self.pty_sessions.lock().unwrap().clear();
 
         let mut sessions = self.sessions.lock().unwrap();
-        for session in sessions.values_mut() {
-            session.status = TerminalStatus::Killed;
-        }
+        let session_count = sessions.len() as u32;
+        sessions.clear();
 
-        log::info!("Killed all {} terminal(s)", count);
+        let count = pty_count.max(session_count);
+        log::info!("Killed and cleared all {} terminal(s)", count);
         count
     }
 

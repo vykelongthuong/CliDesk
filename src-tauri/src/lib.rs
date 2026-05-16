@@ -100,6 +100,7 @@ pub fn run() {
             commands::terminal_commands::terminal_write,
             commands::terminal_commands::terminal_resize,
             commands::terminal_commands::terminal_kill,
+            commands::terminal_commands::terminal_close,
             commands::terminal_commands::terminal_kill_all,
             commands::terminal_commands::terminal_list,
             commands::terminal_commands::shell_list,

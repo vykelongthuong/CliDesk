@@ -58,6 +58,10 @@ export async function killTerminal(terminalId: string): Promise<void> {
   await invoke('terminal_kill', { terminalId });
 }
 
+export async function closeTerminal(terminalId: string): Promise<void> {
+  await invoke('terminal_close', { terminalId });
+}
+
 export async function killAllTerminals(): Promise<{ killed: number }> {
   return invoke('terminal_kill_all');
 }

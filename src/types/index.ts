@@ -9,6 +9,16 @@ export interface Project {
   last_opened_at: string | null;
 }
 
+/** Frontend-only tab descriptor — not persisted to the database. */
+export interface TerminalTab {
+  id: string;            // temporary frontend ID (e.g. "new-1")
+  projectId: string;
+  projectName: string;
+  projectPath: string;
+  projectColor: string;
+  elevated: boolean;
+}
+
 export interface TerminalSession {
   id: string;
   project_id: string;
@@ -57,6 +67,8 @@ export interface GitStatus {
   ahead: number | null;
   behind: number | null;
   files: GitFileStatus[];
+  slow_mode?: boolean;
+  skipped_untracked?: boolean;
 }
 
 export interface GitFileStatus {
@@ -86,6 +98,17 @@ export interface TerminalExitEvent {
   exitCode?: number;
   reason: 'exited' | 'killed' | 'error';
   message?: string;
+}
+
+export type GitLoadState = 'idle' | 'loading' | 'loaded' | 'error';
+
+export interface GitCacheEntry {
+  state: GitLoadState;
+  status: GitStatus | null;
+  error: string | null;
+  loadedAt?: number;
+  slowMode?: boolean;
+  skippedUntracked?: boolean;
 }
 
 export type OpenEditorTab = {

@@ -78,6 +78,10 @@ pub struct GitStatus {
     pub ahead: Option<i32>,
     pub behind: Option<i32>,
     pub files: Vec<GitFileStatus>,
+    #[serde(default)]
+    pub slow_mode: bool,
+    #[serde(default)]
+    pub skipped_untracked: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

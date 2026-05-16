@@ -6,6 +6,7 @@ import { translate } from '../lib/i18n';
 interface FileExplorerProps {
   activeProject: Project;
   onOpenFile: (relativePath: string) => void;
+  isActive: boolean;
   lang: Language;
 }
 
@@ -15,7 +16,7 @@ interface TreeNode {
   expanded: boolean;
 }
 
-const FileExplorer: React.FC<FileExplorerProps> = ({ activeProject, onOpenFile, lang }) => {
+const FileExplorer: React.FC<FileExplorerProps> = ({ activeProject, onOpenFile, isActive, lang }) => {
   const [tree, setTree] = useState<Record<string, TreeNode>>({});
   const [loading, setLoading] = useState(true);
 
@@ -49,9 +50,12 @@ const FileExplorer: React.FC<FileExplorerProps> = ({ activeProject, onOpenFile, 
     }
   }, [loadDirectory]);
 
+  // Only load directory when this panel is active — avoids unnecessary work at startup.
   useEffect(() => {
-    loadRoot();
-  }, [loadRoot]);
+    if (isActive) {
+      loadRoot();
+    }
+  }, [isActive, loadRoot]);
 
   const toggleExpand = useCallback(async (relativePath: string) => {
     const node = tree[relativePath];

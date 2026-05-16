@@ -1,9 +1,15 @@
 import React, { useEffect, useRef, useCallback, useState } from 'react';
 import Editor, { loader } from '@monaco-editor/react';
+import * as monaco from 'monaco-editor';
+import ReactMarkdown from 'react-markdown';
+import remarkGfm from 'remark-gfm';
 import type { Project, OpenEditorTab, Language } from '../types';
 import { readFile, writeFile } from '../lib/commands';
 import { normalizeError } from '../lib/utils';
 import { translate } from '../lib/i18n';
+
+// Use locally-bundled Monaco instead of CDN to avoid network latency in release builds.
+loader.config({ monaco });
 
 interface EditorPanelProps {
   activeProject: Project;
@@ -18,12 +24,9 @@ interface EditorPanelProps {
   lang: Language;
 }
 
-// Configure Monaco Editor
-loader.config({
-  paths: {
-    vs: 'https://cdn.jsdelivr.net/npm/monaco-editor@0.52.2/min/vs',
-  },
-});
+type MarkdownViewMode = 'edit' | 'preview' | 'split';
+
+const isMarkdownFile = (path: string): boolean => /\.(md|markdown)$/i.test(path);
 
 const EditorPanel: React.FC<EditorPanelProps> = ({
   activeProject,
@@ -40,6 +43,8 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   const editorRefs = useRef<Record<string, any>>({});
   const loadedContentRef = useRef<Record<string, boolean>>({});
   const [contextMenu, setContextMenu] = useState<{ x: number; y: number; relativePath: string } | null>(null);
+  const [markdownViewMode, setMarkdownViewMode] = useState<MarkdownViewMode>('edit');
+  const [editorValues, setEditorValues] = useState<Record<string, string>>({});
   const contextMenuRef = useRef<HTMLDivElement>(null);
 
   const activeTab = editorTabs.find(t => t.relativePath === activeEditorPath);
@@ -53,6 +58,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
       (async () => {
         try {
           const result = await readFile(activeProject.path, activeTab.relativePath);
+          setEditorValues(prev => ({ ...prev, [activeTab.relativePath]: result.content }));
           onContentLoaded(activeTab.relativePath, result.content, result.language_id || undefined);
         } catch (err) {
           const msg = normalizeError(err);
@@ -96,111 +102,86 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
     setContextMenu({ x: e.clientX, y: e.clientY, relativePath });
   }, []);
 
+  const handleCloseCurrent = useCallback(() => {
+    if (activeEditorPath) {
+      onCloseEditor(activeEditorPath);
+    }
+  }, [activeEditorPath, onCloseEditor]);
+
   const handleCloseAll = useCallback(() => {
-    setContextMenu(null);
-    loadedContentRef.current = {};
-    editorRefs.current = {};
     onCloseAllEditors();
+    setContextMenu(null);
   }, [onCloseAllEditors]);
 
   const handleCloseOthers = useCallback(() => {
-    if (contextMenu) {
+    if (activeEditorPath) {
+      onCloseOtherEditors(activeEditorPath);
       setContextMenu(null);
-      const keepPath = contextMenu.relativePath;
-      // Clear refs for all tabs except the kept one
-      Object.keys(loadedContentRef.current).forEach(path => {
-        if (path !== keepPath) {
-          delete loadedContentRef.current[path];
-          delete editorRefs.current[path];
-        }
-      });
-      onCloseOtherEditors(keepPath);
     }
-  }, [contextMenu, onCloseOtherEditors]);
+  }, [activeEditorPath, onCloseOtherEditors]);
 
-  const handleEditorDidMount = useCallback((editor: any, monaco: any, relativePath: string) => {
+  // Memoized handleEditorDidMount
+  const handleEditorDidMount = useCallback((editor: any, _monaco: any, relativePath: string) => {
     editorRefs.current[relativePath] = editor;
+  }, []);
 
-    // Save on Ctrl+S
-    editor.addCommand(monaco.KeyMod.CtrlCmd | monaco.KeyCode.KeyS, async () => {
-      const tab = editorTabs.find(t => t.relativePath === relativePath);
-      if (!tab || !tab.dirty) return;
-
-      const content = editor.getValue();
-      try {
-        await writeFile(activeProject.path, relativePath, content);
-        onDirtyChange(relativePath, false);
-        editorRefs.current[relativePath]?.getModel()?.setModified(false);        } catch (err) {
-          console.error('Failed to save file:', normalizeError(err));
-        }
-    });
-  }, [editorTabs, activeProject.path, onDirtyChange]);
-
+  // Memoized handleEditorChange
   const handleEditorChange = useCallback((value: string | undefined, relativePath: string, originalContent: string | undefined) => {
-    if (value !== undefined && originalContent !== undefined) {
-      const isDirty = value !== originalContent;
-      onDirtyChange(relativePath, isDirty);
+    if (value !== undefined) {
+      setEditorValues(prev => ({ ...prev, [relativePath]: value }));
+      const dirty = value !== (originalContent ?? '');
+      onDirtyChange(relativePath, dirty);
     }
   }, [onDirtyChange]);
 
-  const handleSave = async (relativePath: string) => {
-    const tab = editorTabs.find(t => t.relativePath === relativePath);
-    if (!tab || !tab.dirty) return;
-
-    const editor = editorRefs.current[relativePath];
-    if (!editor) return;
-
-    const content = editor.getValue();
-    try {
-      await writeFile(activeProject.path, relativePath, content);
-      onDirtyChange(relativePath, false);
-      editor.getModel()?.setModified(false);
-    } catch (err) {
-      console.error('Failed to save file:', normalizeError(err));
+  // Save handler
+  const handleSave = useCallback(async (relativePath: string) => {
+    const content = editorValues[relativePath];
+    if (content !== undefined) {
+      try {
+        await writeFile(activeProject.path, relativePath, content);
+        onContentLoaded(relativePath, content);
+        onDirtyChange(relativePath, false);
+      } catch (err) {
+        console.error('Failed to save file:', normalizeError(err));
+      }
     }
-  };
+  }, [editorValues, activeProject.path, onContentLoaded, onDirtyChange]);
 
-  // Close editor with unsaved confirmation
-  const handleClose = (relativePath: string) => {
-    const tab = editorTabs.find(t => t.relativePath === relativePath);
-    if (tab?.dirty) {
-      const confirmed = window.confirm(`"${tab.name}" has unsaved changes. Close anyway?`);
-      if (!confirmed) return;
-    }
-    loadedContentRef.current[relativePath] = false;
-    delete editorRefs.current[relativePath];
-    onCloseEditor(relativePath);
-  };
-
-  if (editorTabs.length === 0) {
-    return (
-      <div className="editor-panel">
-        <div className="editor-empty">
-          <p>{t('editor.empty')}</p>
-        </div>
-      </div>
-    );
-  }
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.ctrlKey && e.key === 's') {
+        e.preventDefault();
+        if (activeEditorPath) {
+          handleSave(activeEditorPath);
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [activeEditorPath, handleSave]);
 
   return (
     <div className="editor-panel">
+      {/* Editor Tabs */}
       <div className="editor-tabs">
         {editorTabs.map(tab => (
           <div
             key={tab.relativePath}
-            className={`editor-tab ${activeEditorPath === tab.relativePath ? 'active' : ''}`}
+            className={`editor-tab ${activeEditorPath === tab.relativePath ? 'active' : ''} ${tab.dirty ? 'dirty' : ''}`}
             onClick={() => onSelectEditor(tab.relativePath)}
             onContextMenu={(e) => handleTabRightClick(e, tab.relativePath)}
           >
             <span className="editor-tab-name">
-              {tab.dirty && <span className="dirty-indicator">● </span>}
+              {tab.dirty && <span className="editor-dirty-dot">●</span>}
               {tab.name}
             </span>
             <button
               className="editor-tab-close"
               onClick={(e) => {
                 e.stopPropagation();
-                handleClose(tab.relativePath);
+                onCloseEditor(tab.relativePath);
               }}
             >
               &times;
@@ -212,10 +193,16 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
       {/* Context Menu */}
       {contextMenu && (
         <div
-          ref={contextMenuRef}
           className="editor-context-menu"
+          ref={contextMenuRef}
           style={{ left: contextMenu.x, top: contextMenu.y }}
         >
+          <button
+            className="editor-context-menu-item"
+            onClick={handleCloseCurrent}
+          >
+            {t('editor.close')}
+          </button>
           <button
             className="editor-context-menu-item"
             onClick={handleCloseAll}
@@ -234,26 +221,65 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
       <div className="editor-container">
         {activeTab && (
           <>
+            {isMarkdownFile(activeTab.relativePath) && !activeTab.loading && (
+              <div className="markdown-toolbar">
+                {(['edit', 'preview', 'split'] as MarkdownViewMode[]).map(mode => (
+                  <button
+                    key={mode}
+                    className={`markdown-mode-btn ${markdownViewMode === mode ? 'active' : ''}`}
+                    onClick={() => setMarkdownViewMode(mode)}
+                  >
+                    {mode === 'edit' && t('editor.markdown_edit')}
+                    {mode === 'preview' && t('editor.markdown_preview')}
+                    {mode === 'split' && t('editor.markdown_split')}
+                  </button>
+                ))}
+              </div>
+            )}
             {activeTab.loading ? (
               <div className="editor-loading">{t('editor.loading')}</div>
-            ) : (
-              <Editor
-                key={activeTab.relativePath}
-                defaultLanguage={activeTab.languageId || 'plaintext'}
-                defaultValue={activeTab.content || ''}
-                theme="vs-dark"
-                options={{
-                  fontSize: 14,
-                  minimap: { enabled: false },
-                  scrollBeyondLastLine: false,
-                  wordWrap: 'on',
-                  automaticLayout: true,
-                  readOnly: activeTab.content === undefined,
-                }}
-                onMount={(editor, monaco) => handleEditorDidMount(editor, monaco, activeTab.relativePath)}
-                onChange={(value) => handleEditorChange(value, activeTab.relativePath, activeTab.content)}
-              />
-            )}
+            ) : (() => {
+              const isMarkdown = isMarkdownFile(activeTab.relativePath);
+              const content = editorValues[activeTab.relativePath] ?? activeTab.content ?? '';
+              const editor = (
+                <Editor
+                  key={activeTab.relativePath}
+                  defaultLanguage={activeTab.languageId || 'plaintext'}
+                  value={content}
+                  theme="vs-dark"
+                  options={{
+                    fontSize: 14,
+                    minimap: { enabled: false },
+                    scrollBeyondLastLine: false,
+                    wordWrap: 'on',
+                    automaticLayout: true,
+                    readOnly: activeTab.content === undefined,
+                  }}
+                  onMount={(editor, monacoInstance) => handleEditorDidMount(editor, monacoInstance, activeTab.relativePath)}
+                  onChange={(value) => handleEditorChange(value, activeTab.relativePath, activeTab.content)}
+                />
+              );
+              const preview = (
+                <div className="markdown-preview">
+                  <div className="markdown-preview-content">
+                    {content.trim() ? (
+                      <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
+                    ) : (
+                      <p className="markdown-preview-empty">{t('editor.markdown_preview_empty')}</p>
+                    )}
+                  </div>
+                </div>
+              );
+
+              if (!isMarkdown || markdownViewMode === 'edit') return editor;
+              if (markdownViewMode === 'preview') return preview;
+              return (
+                <div className="markdown-split">
+                  <div className="markdown-editor-half">{editor}</div>
+                  <div className="markdown-preview-half">{preview}</div>
+                </div>
+              );
+            })()}
             <div className="editor-statusbar">
               <span className="status-item">
                 {activeTab.relativePath}
