@@ -55,7 +55,7 @@ This starts the Vite dev server on `http://localhost:1420` and opens the Tauri d
 
 ## Build
 
-### Windows — release (with Administrator elevation)
+### Windows — release
 
 ```bash
 npm run build:win
@@ -66,7 +66,7 @@ The output executable is at:
 src-tauri/target/release/clidesk.exe
 ```
 
-**Important:** The Windows build embeds a manifest that sets `requestedExecutionLevel="requireAdministrator"`. When you launch `clidesk.exe`, Windows will show a **UAC prompt**. This is required so that terminal child processes inherit administrator privileges.
+The Windows build embeds a manifest with `requestedExecutionLevel="asInvoker"`, so launching `clidesk.exe` should not show a UAC elevation prompt.
 
 ### Linux — release
 
@@ -90,7 +90,7 @@ Linux builds do **not** embed an administrator manifest. Use `sudo` inside termi
 ## Important Notes
 
 - **No terminal output is saved** — CliDesk does not log or persist terminal output. All session data is ephemeral.
-- **On Windows**, the app requires **Administrator** privileges. The `.exe` is not code-signed, so Windows SmartScreen may show a warning. Click **"Run anyway"** to proceed.
+- **On Windows**, the app runs without requiring Administrator privileges. The `.exe` is not code-signed, so Windows SmartScreen may show a warning. Click **"Run anyway"** to proceed.
 - **WebView2** is required on Windows. It is pre-installed on Windows 11 and Windows 10 (April 2018+). Older versions may need a [manual install](https://developer.microsoft.com/en-us/microsoft-edge/webview2/).
 - **Linux builds** must be built on Linux — cross-compilation from Windows is not covered.
 
@@ -115,3 +115,9 @@ clidesk/
 ├── package.json
 └── README.md
 ```
+
+---
+
+## License
+
+This project is licensed under the Apache License 2.0. See the [LICENSE](LICENSE) file for details.

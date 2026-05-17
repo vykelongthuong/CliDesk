@@ -2,6 +2,7 @@
   "name": "clidesk",
   "private": true,
   "version": "0.1.0",
+  "license": "Apache-2.0",
   "type": "module",
   "scripts": {
     "dev": "tauri dev",
@@ -13,16 +14,18 @@
     "tauri": "tauri",
     "build:win": "tauri build --target x86_64-pc-windows-msvc --no-bundle",
     "clean:build": "powershell -NoProfile -ExecutionPolicy Bypass -Command \"Remove-Item -Recurse -Force dist -ErrorAction SilentlyContinue; Remove-Item -Recurse -Force src-tauri\\target -ErrorAction SilentlyContinue\"",
-    "build:portable": "tauri build --target x86_64-pc-windows-msvc --no-bundle"
+    "build:portable": "tauri build --target x86_64-pc-windows-msvc --no-bundle",
+    "build:launcher": "cargo build --release --manifest-path src-launcher\\Cargo.toml"
   },
   "dependencies": {
     "@monaco-editor/react": "^4.7.0",
-    "monaco-editor": "^0.52.2",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-dialog": "^2.7.1",
     "@tauri-apps/plugin-opener": "^2",
     "@xterm/addon-fit": "^0.11.0",
+    "@xterm/addon-unicode11": "^0.9.0",
     "@xterm/xterm": "^6.0.0",
+    "monaco-editor": "^0.52.2",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
     "react-markdown": "^10.1.0",
