@@ -7,6 +7,7 @@ dist-ssr/
 
 # ── Rust / Tauri ─────────────────────────────────────
 target/
+src-tauri/target/
 src-tauri/gen/schemas/
 
 # ── Build artifacts ──────────────────────────────────
@@ -17,6 +18,7 @@ src-tauri/gen/schemas/
 *.rpm
 *.AppImage
 *.pdb
+build/
 
 # ── npm vendor binaries (keep directory, ignore binaries) ─
 npm/clidesk/vendor/*.exe
@@ -25,8 +27,11 @@ npm/clidesk/vendor/*.msi
 npm/clidesk/vendor/*.tgz
 !npm/clidesk/vendor/.gitkeep
 
+# ── npm pack output ──────────────────────────────────
+npm/clidesk/*.tgz
+
 # ── Logs ─────────────────────────────────────────────
-logs
+logs/
 *.log
 npm-debug.log*
 yarn-debug.log*
@@ -42,18 +47,24 @@ lerna-debug.log*
 # ── OS files ─────────────────────────────────────────
 .DS_Store
 Thumbs.db
-elevated_test.bat
+Desktop.ini
+ehthumbs.db
+*.swp
+*.swo
+*~
 
-# ── Local-only helper / AI agent files ────────────────
-run-dev.bat
-run-dev.sh
-AI_AGENT_PROMPT_TEMPLATE.md
-AGENTS.md
-CLIDESK_LAUNCH_FLOW_TASK.md
+# ── AI agent docs (local-only, not for GitHub) ───────
+.agent-docs/
 
 # ── AI assistant config ──────────────────────────────
 .claude/
 .deepseek/
+.gemini/
+
+# ── Local-only helper scripts ────────────────────────
+run-dev.bat
+run-dev.sh
+elevated_test.bat
 
 # ── Editor directories and files ─────────────────────
 .vscode/*
@@ -65,7 +76,8 @@ CLIDESK_LAUNCH_FLOW_TASK.md
 *.sln
 *.sw?
 
-# ── Terminal output (app never saves logs) ───────────
+# ── Misc ─────────────────────────────────────────────
 terminal_dashboard_ai_docs/
 npmclideskvendor/
 vite_output.txt
+wiki-temp/
