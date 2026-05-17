@@ -1,21 +1,34 @@
 ﻿import React, { useEffect, useRef, useState, useCallback } from 'react';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
+import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
 import type { Project, Language, TerminalTab } from '../types';
 import { listen } from '@tauri-apps/api/event';
 import { getProjectColor } from '../lib/projectColors';
-import { spawnTerminal, writeTerminal, resizeTerminal, closeTerminal, isElevated, restartAsAdmin } from '../lib/commands';
+import { spawnTerminal, writeTerminal, resizeTerminal, closeTerminal } from '../lib/commands';
 import { translate } from '../lib/i18n';
 import { normalizeError } from '../lib/utils';
+
+const DEBUG_TERMINAL_RENDER = false;
+
+const waitForStableLayout = () =>
+  new Promise<void>((resolve) => {
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => resolve());
+    });
+  });
+
+type TerminalOutputPayload = number[] | { data: number[] };
 
 interface TerminalPaneProps {
   activeProject: Project;
   terminalTabs: TerminalTab[];
   activeTerminalId: string | null;
-  onNewTerminal: (options?: { elevated?: boolean }) => void;
+  onNewTerminal: () => void;
   onCloseTerminal: (id: string) => void;
   onSelectTerminal: (id: string) => void;
+  isActive: boolean;
   lang: Language;
 }
 
@@ -72,33 +85,6 @@ const RenameInput: React.FC<RenameInputProps> = ({ value, onSubmit, onCancel }) 
   );
 };
 
-// ── Admin confirm dialog component ────────────────────────────────────
-interface AdminConfirmDialogProps {
-  lang: Language;
-  onRestartAsAdmin: () => void;
-  onCancel: () => void;
-}
-
-const AdminConfirmDialog: React.FC<AdminConfirmDialogProps> = ({ lang, onRestartAsAdmin, onCancel }) => {
-  const t = (key: string) => translate(key, lang);
-  return (
-    <div className="admin-confirm-overlay" onClick={onCancel}>
-      <div className="admin-confirm-dialog" onClick={(e) => e.stopPropagation()}>
-        <h3>{t('terminal.admin_confirm_title')}</h3>
-        <p>{t('terminal.admin_confirm_text')}</p>
-        <div className="admin-confirm-actions">
-          <button className="admin-confirm-btn admin-confirm-btn-primary" onClick={onRestartAsAdmin}>
-            {t('terminal.restart_as_admin')}
-          </button>
-          <button className="admin-confirm-btn admin-confirm-btn-cancel" onClick={onCancel}>
-            {t('terminal.cancel')}
-          </button>
-        </div>
-      </div>
-    </div>
-  );
-};
-
 // ── TerminalPane component ────────────────────────────────────────────
 const TerminalPane: React.FC<TerminalPaneProps> = ({
   activeProject,
@@ -107,31 +93,108 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
   onNewTerminal,
   onCloseTerminal,
   onSelectTerminal,
+  isActive,
   lang,
 }) => {
   const terminalRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const terminalInstances = useRef<Record<string, { term: Terminal; fitAddon: FitAddon }>>({});
   const realIdsRef = useRef<Record<string, string>>({});
   const cleanupFnsRef = useRef<Record<string, () => void>>({});
+  const lastDimsRef = useRef<Record<string, { cols: number; rows: number }>>({});
+  const resizeFrameRef = useRef<Record<string, number>>({});
+  const decoderRef = useRef<Record<string, TextDecoder>>({});
   const [terminalNames, setTerminalNames] = useState<Record<string, string>>({});
   const [renamingId, setRenamingId] = useState<string | null>(null);
-  const [showAdminDropdown, setShowAdminDropdown] = useState(false);
   const [pendingTerminalAction, setPendingTerminalAction] = useState<{ tempId: string; x: number; y: number } | null>(null);
   const [terminalContextMenu, setTerminalContextMenu] = useState<{ tempId: string; x: number; y: number } | null>(null);
   const [recentlyStopped, setRecentlyStopped] = useState<Record<string, boolean>>({});
-  const [adminConfirmOpen, setAdminConfirmOpen] = useState(false);
-  const [adminChecking, setAdminChecking] = useState(false);
-  const adminDropdownRef = useRef<HTMLDivElement>(null);
   const terminalActionMenuRef = useRef<HTMLDivElement>(null);
   const terminalContextMenuRef = useRef<HTMLDivElement>(null);
 
   const t = useCallback((key: string) => translate(key, lang), [lang]);
 
   // ── Generate default name ───────────────────────────────────────────
-  const getDefaultName = useCallback((index: number, elevated: boolean) => {
-    const base = `Terminal ${index + 1}`;
-    return elevated ? `${base} (Admin)` : base;
+  const getDefaultName = useCallback((index: number) => {
+    return `Terminal ${index + 1}`;
   }, []);
+
+  const getTerminalSize = useCallback((term: Terminal) => {
+    const cols = Number.isFinite(term.cols) && term.cols > 0 ? term.cols : 80;
+    const rows = Number.isFinite(term.rows) && term.rows > 0 ? term.rows : 24;
+    return { cols, rows };
+  }, []);
+
+  const isElementVisible = useCallback((el: HTMLElement | null) => {
+    return Boolean(el && el.clientWidth > 0 && el.clientHeight > 0);
+  }, []);
+
+  const isTerminalVisible = useCallback((tempId: string) => {
+    return isElementVisible(terminalRefs.current[tempId]);
+  }, [isElementVisible]);
+
+  const debugTerminalSize = useCallback((tempId: string, label: string, cols: number, rows: number) => {
+    if (!DEBUG_TERMINAL_RENDER) return;
+
+    const container = terminalRefs.current[tempId];
+    const instance = terminalInstances.current[tempId];
+    console.debug('[TerminalPane:render]', {
+      label,
+      tempId,
+      realId: realIdsRef.current[tempId],
+      containerWidth: container?.clientWidth ?? 0,
+      containerHeight: container?.clientHeight ?? 0,
+      cols,
+      rows,
+      fontFamily: instance?.term.options.fontFamily,
+      fontSize: instance?.term.options.fontSize,
+      lineHeight: instance?.term.options.lineHeight,
+      unicodeVersion: instance?.term.unicode.activeVersion,
+    });
+  }, []);
+
+  const fitTerminal = useCallback((tempId: string) => {
+    const instance = terminalInstances.current[tempId];
+    const container = terminalRefs.current[tempId];
+
+    if (!instance || !isElementVisible(container)) {
+      return { cols: 80, rows: 24 };
+    }
+
+    try {
+      instance.fitAddon.fit();
+    } catch (err) {
+      console.warn('terminal fit ignored:', normalizeError(err));
+    }
+
+    return getTerminalSize(instance.term);
+  }, [getTerminalSize, isElementVisible]);
+
+  const fitAndResize = useCallback(async (tempId: string) => {
+    const realId = realIdsRef.current[tempId];
+
+    if (!realId || !isTerminalVisible(tempId)) return;
+
+    const { cols, rows } = fitTerminal(tempId);
+    const last = lastDimsRef.current[tempId];
+
+    if (!last || last.cols !== cols || last.rows !== rows) {
+      lastDimsRef.current[tempId] = { cols, rows };
+      debugTerminalSize(tempId, 'resize', cols, rows);
+      await resizeTerminal(realId, cols, rows);
+    }
+  }, [debugTerminalSize, fitTerminal, isTerminalVisible]);
+
+  const scheduleFitAndResize = useCallback((tempId: string) => {
+    const previousFrame = resizeFrameRef.current[tempId];
+    if (previousFrame) {
+      cancelAnimationFrame(previousFrame);
+    }
+
+    resizeFrameRef.current[tempId] = requestAnimationFrame(() => {
+      delete resizeFrameRef.current[tempId];
+      fitAndResize(tempId);
+    });
+  }, [fitAndResize]);
 
   const closeMenus = useCallback(() => {
     setPendingTerminalAction(null);
@@ -146,6 +209,13 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
       terminalInstances.current[tempId]?.term.dispose();
     } catch (_) {}
 
+    const resizeFrame = resizeFrameRef.current[tempId];
+    if (resizeFrame) {
+      cancelAnimationFrame(resizeFrame);
+      delete resizeFrameRef.current[tempId];
+    }
+    delete lastDimsRef.current[tempId];
+    delete decoderRef.current[tempId];
     delete cleanupFnsRef.current[tempId];
     delete terminalInstances.current[tempId];
     delete terminalRefs.current[tempId];
@@ -213,20 +283,6 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
     onSelectTerminal(keepId);
   }, [terminalTabs, closeTerminalByTempId, onSelectTerminal]);
 
-  // ── Close admin dropdown on click outside ────────────────────────────
-  useEffect(() => {
-    const handleClick = (e: MouseEvent) => {
-      if (adminDropdownRef.current && !adminDropdownRef.current.contains(e.target as Node)) {
-        setShowAdminDropdown(false);
-      }
-    };
-    if (showAdminDropdown) {
-      window.addEventListener('mousedown', handleClick);
-    }
-    return () => window.removeEventListener('mousedown', handleClick);
-  }, [showAdminDropdown]);
-
-
   // ── Close terminal menus on click outside / Escape ──────────────────
   useEffect(() => {
     if (!terminalContextMenu && !pendingTerminalAction) return;
@@ -256,15 +312,6 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
     };
   }, [terminalContextMenu, pendingTerminalAction, closeMenus]);
 
-  // ── Close admin dropdown on Escape ────────────────────────────
-  useEffect(() => {
-    if (!showAdminDropdown) return;
-    const handleKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') setShowAdminDropdown(false);
-    };
-    document.addEventListener('keydown', handleKey);
-    return () => document.removeEventListener('keydown', handleKey);
-  }, [showAdminDropdown]);
   // ── Spawn a terminal when a new temp ID appears ─────────────────────
   useEffect(() => {
     terminalTabs.forEach(async (tab, index) => {
@@ -272,14 +319,16 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
         const id = tab.id;
         // Set default name if not set
         if (!terminalNames[tab.id]) {
-          setTerminalNames(prev => ({ ...prev, [tab.id]: getDefaultName(index, tab.elevated) }));
+          setTerminalNames(prev => ({ ...prev, [tab.id]: getDefaultName(index) }));
         }
 
         const term = new Terminal({
           cursorBlink: true,
           cursorStyle: 'block',
           fontSize: 14,
-          fontFamily: "'Cascadia Code', 'Fira Code', 'Consolas', monospace",
+          fontFamily: "Consolas, 'Cascadia Mono', monospace",
+          letterSpacing: 0,
+          lineHeight: 1,
           theme: {
             background: '#1e1e2e',
             foreground: '#cdd6f4',
@@ -314,51 +363,48 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
           return true;
         });
 
+        const unicode11Addon = new Unicode11Addon();
+        term.loadAddon(unicode11Addon);
+        term.unicode.activeVersion = '11';
+
         const fitAddon = new FitAddon();
         term.loadAddon(fitAddon);
 
         const container = terminalRefs.current[id];
         if (container) {
           term.open(container);
-          // Fit after render
-          requestAnimationFrame(() => {
-            try {
-              fitAddon.fit();
-              term.focus();
-            } catch (_) {}
-          });
         }
 
         terminalInstances.current[id] = { term, fitAddon };
 
         // Spawn the actual terminal on the backend
         try {
-          const dims = fitAddon.proposeDimensions();
-          const cols = dims?.cols || 80;
-          const rows = dims?.rows || 24;
+          await waitForStableLayout();
+          const initialSize = fitTerminal(id);
+          debugTerminalSize(id, 'spawn', initialSize.cols, initialSize.rows);
 
           const session = await spawnTerminal(
             tab.projectId,
-            cols,
-            rows,
+            initialSize.cols,
+            initialSize.rows,
             '',
             undefined,
-            tab.elevated,
           );
 
           const realId = session.id;
           realIdsRef.current[id] = realId;
+          decoderRef.current[id] = new TextDecoder('utf-8', { fatal: false });
+          const spawnSize = fitTerminal(id);
+          lastDimsRef.current[id] = spawnSize;
+          debugTerminalSize(id, 'spawn-resize', spawnSize.cols, spawnSize.rows);
+          await resizeTerminal(realId, spawnSize.cols, spawnSize.rows);
 
-          console.log(`[TerminalPane] Spawned terminal: tempId=${id}, realId=${realId}, elevated=${tab.elevated}`);
+          console.log(`[TerminalPane] Spawned terminal: tempId=${id}, realId=${realId}`);
 
           // Handle user input → send to backend
           const disposeInput = term.onData((data) => {
             if (data === '') {
-              term.write(`
-
-[33m[${translate('terminal.ctrl_c_blocked', lang)}][0m
-
-`);
+              term.write(`\r\n\x1b[33m[${translate('terminal.ctrl_c_blocked', lang)}]\x1b[0m\r\n`);
               return;
             }
             writeTerminal(realId, data).catch((err) =>
@@ -367,10 +413,20 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
           });
 
           // Listen for terminal output events from backend
-          const unlistenOutput = await listen<string>(
+          const unlistenOutput = await listen<TerminalOutputPayload>(
             `terminal://output/${realId}`,
             (event) => {
-              term.write(event.payload);
+              const payload = Array.isArray(event.payload) ? event.payload : event.payload.data;
+              let decoder = decoderRef.current[id];
+              if (!decoder) {
+                decoder = new TextDecoder('utf-8', { fatal: false });
+                decoderRef.current[id] = decoder;
+              }
+
+              const text = decoder.decode(new Uint8Array(payload), { stream: true });
+              if (text) {
+                term.write(text);
+              }
             }
           );
 
@@ -380,8 +436,13 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
             (event: any) => {
               const payload = event.payload;
               const exitCode = payload.exitCode ?? payload.exit_code ?? 'unknown';
-              term.write(                    `\r\n\x1b[2m[${translate('terminal.exit_prefix', lang)} ${exitCode}]\x1b[0m\r\n`
-              );
+              const decoder = decoderRef.current[id];
+              const remaining = decoder?.decode();
+              if (remaining) {
+                term.write(remaining);
+              }
+              term.write(`\r\n\x1b[2m[${translate('terminal.exit_prefix', lang)} ${exitCode}]\x1b[0m\r\n`);
+              delete decoderRef.current[id];
               unlistenOutput();
               unlistenExit();
             }
@@ -389,15 +450,7 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
 
           // Fit terminal on container resize
           const resizeObserver = new ResizeObserver(() => {
-            requestAnimationFrame(() => {
-              try {
-                fitAddon.fit();
-                const d = fitAddon.proposeDimensions();
-                if (d) {
-                  resizeTerminal(realId, d.cols, d.rows).catch(() => {});
-                }
-              } catch (_) {}
-            });
+            scheduleFitAndResize(id);
           });
 
           if (container) {
@@ -410,6 +463,12 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
             unlistenOutput();
             unlistenExit();
             resizeObserver.disconnect();
+            delete decoderRef.current[id];
+            const resizeFrame = resizeFrameRef.current[id];
+            if (resizeFrame) {
+              cancelAnimationFrame(resizeFrame);
+              delete resizeFrameRef.current[id];
+            }
           };
         } catch (err) {
           console.error('Failed to spawn terminal:', normalizeError(err));
@@ -425,16 +484,17 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
 
   // ── Focus/refit the active terminal when it changes ────────────────
   useEffect(() => {
-    if (activeTerminalId && terminalInstances.current[activeTerminalId]) {
-      const { term, fitAddon } = terminalInstances.current[activeTerminalId];
-      requestAnimationFrame(() => {
-        try {
-          fitAddon.fit();
-          term.focus();
-        } catch (_) {}
-      });
+    if (isActive && activeTerminalId && terminalInstances.current[activeTerminalId]) {
+      const instance = terminalInstances.current[activeTerminalId];
+      if (instance) {
+        requestAnimationFrame(() => {
+          fitAndResize(activeTerminalId).finally(() => {
+            instance.term.focus();
+          });
+        });
+      }
     }
-  }, [activeTerminalId]);
+  }, [activeTerminalId, fitAndResize, isActive]);
 
   // ── Cleanup all terminals on unmount (NOT on tab switch) ───────────
   useEffect(() => {
@@ -478,46 +538,6 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
     onNewTerminal();
   }, [onNewTerminal]);
 
-  // ── Admin Terminal handler ──────────────────────────────────────────
-  const handleAdminTerminal = useCallback(async () => {
-    setShowAdminDropdown(false);
-    setAdminChecking(true);
-    try {
-      const elevated = await isElevated();
-      if (elevated) {
-        // App is already running as admin — spawn admin terminal directly
-        onNewTerminal({ elevated: true });
-      } else {
-        // App is not elevated — show dialog
-        setAdminConfirmOpen(true);
-      }
-    } catch {
-      // If isElevated fails (e.g., unsupported platform), show unavailable
-      const isWindows = navigator.userAgent.includes('Windows');
-      if (!isWindows) {
-        alert(t('terminal.admin_unavailable'));
-      } else {
-        setAdminConfirmOpen(true);
-      }
-    } finally {
-      setAdminChecking(false);
-    }
-  }, [onNewTerminal, t]);
-
-  const handleRestartAsAdmin = useCallback(async () => {
-    setAdminConfirmOpen(false);
-    try {
-      await restartAsAdmin();
-    } catch (err) {
-      // Restart not supported (Linux, dev mode, etc.) — show user-visible message
-      alert(t('terminal.admin_unavailable'));
-    }
-  }, [t]);
-
-  const handleCancelAdmin = useCallback(() => {
-    setAdminConfirmOpen(false);
-  }, []);
-
   // ── Render ──────────────────────────────────────────────────────────
   const activeTab = terminalTabs.find(t => t.id === activeTerminalId) ?? (terminalTabs.length > 0 ? terminalTabs[terminalTabs.length - 1] : undefined);
   const toolbarColor = activeTab?.projectColor ?? getProjectColor(activeProject);
@@ -551,7 +571,7 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
                 <span className="terminal-project-dot" />
                 {renamingId === id ? (
                   <RenameInput
-                    value={terminalNames[id] || getDefaultName(index, tab.elevated)}
+                    value={terminalNames[id] || getDefaultName(index)}
                     onSubmit={(name) => handleFinishRename(id, name)}
                     onCancel={handleCancelRename}
                   />
@@ -562,13 +582,10 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
                       onDoubleClick={(e) => handleStartRename(id, e)}
                       title={t('terminal.rename_hint')}
                     >
-                      {terminalNames[id] || getDefaultName(index, tab.elevated)}
+                      {terminalNames[id] || getDefaultName(index)}
                     </span>
                     {recentlyStopped[id] && (
                       <span className="terminal-status-badge">{t('terminal.stopped')}</span>
-                    )}
-                    {tab.elevated && (
-                      <span className="terminal-admin-badge">{t('terminal.admin_badge')}</span>
                     )}
                   </>
                 )}
@@ -588,38 +605,16 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
           })}
         </div>
         )}
-        <div className="terminal-new-btn-group" ref={adminDropdownRef}>
+        <div className="terminal-toolbar-actions">
           <button
             className="toolbar-btn toolbar-btn-new-terminal"
             onClick={handleNewTerminal}
-            onContextMenu={(e) => {
-              e.preventDefault();
-              setShowAdminDropdown(prev => !prev);
-            }}
             title={t('terminal.new_btn')}
           >
             {t('terminal.new_btn')}
           </button>
-          {showAdminDropdown && (
-            <div className="terminal-dropdown-menu">
-              <button
-                className="terminal-dropdown-item"
-                onClick={handleAdminTerminal}
-                disabled={adminChecking}
-              >
-                {t('terminal.new_admin')}
-              </button>
-            </div>
-          )}
         </div>
       </div>
-      {adminConfirmOpen && (
-        <AdminConfirmDialog
-          lang={lang}
-          onRestartAsAdmin={handleRestartAsAdmin}
-          onCancel={handleCancelAdmin}
-        />
-      )}
       {pendingTerminalAction && (
         <div
           className="terminal-action-menu"

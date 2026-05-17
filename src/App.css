@@ -566,8 +566,7 @@ body {
   background: rgba(239, 68, 68, 0.12);
 }
 
-.terminal-status-badge,
-.terminal-admin-badge {
+.terminal-status-badge {
   flex: 0 0 auto;
   padding: 2px 5px;
   border-radius: 999px;
@@ -579,11 +578,6 @@ body {
 .terminal-status-badge {
   color: var(--bg-primary);
   background: var(--warning);
-}
-
-.terminal-admin-badge {
-  color: var(--accent);
-  background: rgba(59, 130, 246, 0.14);
 }
 
 .terminal-action-menu,
@@ -663,15 +657,23 @@ body {
   flex: 1;
   position: relative;
   overflow: hidden;
+  min-height: 0;
 }
 
 .xterm-wrapper {
   position: absolute;
   inset: 0;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 .xterm-wrapper.hidden {
   display: none;
+}
+
+.xterm-wrapper .xterm {
+  width: 100%;
+  height: 100%;
 }
 
 .terminal-empty {
@@ -685,11 +687,6 @@ body {
 }
 
 /* xterm.js overrides */
-.xterm {
-  height: 100% !important;
-  padding: 4px;
-}
-
 .xterm-viewport {
   scrollbar-width: thin;
 }
@@ -1585,126 +1582,3 @@ body {
   border-color: var(--border);
 }
 
-/* ── Admin Terminal Dropdown & Badge ────────────── */
-.terminal-new-btn-group {
-  position: relative;
-  display: flex;
-  align-items: center;
-  flex-shrink: 0;
-  border: none;
-  background: transparent;
-}
-
-.terminal-new-btn-group::before,
-.terminal-new-btn-group::after {
-  display: none;
-  content: none;
-}
-
-.terminal-dropdown-menu {
-  position: absolute;
-  top: calc(100% + 6px);
-  left: 0;
-  z-index: 10000;
-  min-width: 190px;
-  background: var(--bg-surface);
-  border: 1px solid var(--border);
-  border-radius: 6px;
-  box-shadow: 0 4px 12px rgba(0,0,0,0.15);
-  padding: 4px 0;
-}
-
-.terminal-dropdown-item {
-  display: block;
-  width: 100%;
-  padding: 8px 16px;
-  border: none;
-  background: none;
-  color: var(--text-primary);
-  font-size: 13px;
-  text-align: left;
-  cursor: pointer;
-  transition: background 0.12s;
-}
-
-.terminal-dropdown-item:hover {
-  background: var(--bg-hover);
-}
-
-.terminal-admin-badge {
-  display: inline-block;
-  font-size: 10px;
-  font-weight: 600;
-  padding: 1px 6px;
-  border-radius: 3px;
-  margin-left: 6px;
-  background: #d4a017;
-  color: #fff;
-  vertical-align: middle;
-}
-
-/* ── Admin Confirm Dialog ───────────────────────── */
-.admin-confirm-overlay {
-  position: fixed;
-  inset: 0;
-  background: rgba(0,0,0,0.4);
-  z-index: 20000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-.admin-confirm-dialog {
-  background: var(--bg-surface);
-  border-radius: 10px;
-  padding: 24px;
-  max-width: 420px;
-  width: 90%;
-  box-shadow: 0 8px 32px rgba(0,0,0,0.2);
-}
-
-.admin-confirm-dialog p {
-  margin: 0 0 20px;
-  font-size: 14px;
-  line-height: 1.5;
-  color: var(--text-primary);
-}
-
-.admin-confirm-actions {
-  display: flex;
-  gap: 8px;
-  justify-content: flex-end;
-}
-
-.admin-confirm-btn {
-  padding: 8px 20px;
-  border-radius: 6px;
-  border: 1px solid var(--border);
-  background: transparent;
-  color: var(--text-primary);
-  font-size: 13px;
-  cursor: pointer;
-  transition: background 0.12s;
-}
-
-.admin-confirm-btn:hover {
-  background: var(--bg-hover);
-}
-
-.admin-confirm-btn-primary {
-  background: #d4a017;
-  color: #fff;
-  border-color: #d4a017;
-}
-
-.admin-confirm-btn-primary:hover {
-  background: #b8890f;
-}
-
-.admin-confirm-btn-cancel {
-  background: transparent;
-}
-
-.admin-confirm-btn-cancel:hover {
-  background: var(--bg-hover);
-}

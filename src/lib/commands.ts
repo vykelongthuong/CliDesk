@@ -33,8 +33,7 @@ export async function spawnTerminal(
   cols: number,
   rows: number,
   cwdRelativePath?: string,
-  shellId?: string,
-  elevated?: boolean
+  shellId?: string
 ): Promise<TerminalSession> {
   return invoke('terminal_spawn', {
     projectId,
@@ -42,7 +41,6 @@ export async function spawnTerminal(
     shellId,
     cols,
     rows,
-    elevated: elevated || false,
   });
 }
 
@@ -94,15 +92,6 @@ export async function getGitStatus(projectId: string): Promise<GitStatus> {
 
 export async function getGitDiff(projectId: string, relativePath: string, staged?: boolean): Promise<GitDiffResult> {
   return invoke('git_diff', { projectId, relativePath, staged });
-}
-
-// Admin/Restart commands
-export async function isElevated(): Promise<boolean> {
-  return invoke('is_elevated');
-}
-
-export async function restartAsAdmin(): Promise<void> {
-  await invoke('restart_as_admin');
 }
 
 // Settings commands

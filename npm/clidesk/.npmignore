@@ -1,0 +1,6 @@
+# Don't publish these with npm
+node_modules/
+.npm/
+*.tgz
+.DS_Store
+Thumbs.db

@@ -104,8 +104,6 @@ pub fn run() {
             commands::terminal_commands::terminal_kill_all,
             commands::terminal_commands::terminal_list,
             commands::terminal_commands::shell_list,
-            commands::terminal_commands::is_elevated,
-            commands::terminal_commands::restart_as_admin,
             commands::file_commands::fs_list_dir,
             commands::file_commands::fs_read_file,
             commands::file_commands::fs_write_file,

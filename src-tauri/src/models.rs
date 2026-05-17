@@ -20,7 +20,6 @@ pub struct TerminalSession {
     pub status: TerminalStatus,
     pub exit_code: Option<i32>,
     pub created_at: String,
-    pub elevated: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

@@ -17,7 +17,6 @@ pub fn terminal_spawn(
     shell_id: Option<String>,
     cols: u16,
     rows: u16,
-    elevated: Option<bool>,
 ) -> Result<TerminalSession, AppError> {
     let shell = shell_id.unwrap_or_else(|| {
         #[cfg(target_os = "windows")]
@@ -25,8 +24,6 @@ pub fn terminal_spawn(
         #[cfg(not(target_os = "windows"))]
         { "default".to_string() }
     });
-    let is_elevated = elevated.unwrap_or(false);
-
     let project = {
         let conn = db
             .0
@@ -42,15 +39,14 @@ pub fn terminal_spawn(
     let cwd = cwd_path.to_string_lossy().to_string();
 
     log::info!(
-        "Spawning terminal for project_id={} project_path={} resolved_cwd={} shell={} elevated={}",
+        "Spawning terminal for project_id={} project_path={} resolved_cwd={} shell={}",
         project_id,
         project.path,
         cwd,
-        shell,
-        is_elevated
+        shell
     );
 
-    let session = terminal.0.spawn_terminal(&project_id, &cwd, &shell, cols, rows, is_elevated, app)?;
+    let session = terminal.0.spawn_terminal(&project_id, &cwd, &shell, cols, rows, app)?;
     Ok(session)
 }
 
@@ -185,19 +181,4 @@ pub fn terminal_list(
 #[tauri::command]
 pub fn shell_list() -> Vec<ShellConfig> {
     TerminalService::detect_shells()
-}
-
-#[tauri::command]
-pub fn is_elevated() -> bool {
-    TerminalService::is_elevated()
-}
-
-#[tauri::command]
-pub fn restart_as_admin(
-    terminal: State<TerminalState>,
-) -> Result<(), AppError> {
-    // Kill all terminal child processes first
-    terminal.0.kill_all();
-    // Then restart as admin
-    TerminalService::restart_as_admin()
 }

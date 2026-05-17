@@ -1,0 +1,34 @@
+{
+  "name": "clidesk",
+  "version": "0.1.0",
+  "description": "CliDesk desktop app launcher — install with npm i -g clidesk",
+  "license": "Apache-2.0",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/vykelongthuong/CliDesk"
+  },
+  "bin": {
+    "clidesk": "bin/clidesk.js"
+  },
+  "scripts": {
+    "postinstall": "node scripts/install.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "os": ["win32"],
+  "cpu": ["x64"],
+  "files": [
+    "bin",
+    "scripts",
+    "vendor",
+    "README.md"
+  ],
+  "keywords": [
+    "clidesk",
+    "desktop",
+    "dashboard",
+    "terminal",
+    "tauri"
+  ]
+}

@@ -1,0 +1,8 @@
+[package]
+name = "clidesk-launcher"
+version = "0.1.0"
+edition = "2021"
+
+[[bin]]
+name = "clidesk-launcher"
+path = "src/main.rs"

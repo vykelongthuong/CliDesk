@@ -16,7 +16,6 @@ export interface TerminalTab {
   projectName: string;
   projectPath: string;
   projectColor: string;
-  elevated: boolean;
 }
 
 export interface TerminalSession {
@@ -28,7 +27,6 @@ export interface TerminalSession {
   status: 'starting' | 'running' | 'exited' | 'killed' | 'error';
   exit_code: number | null;
   created_at: string;
-  elevated: boolean;
 }
 
 export interface ShellConfig {

@@ -29,77 +29,6 @@ impl TerminalService {
         }
     }
 
-    pub fn is_elevated() -> bool {
-        #[cfg(target_os = "windows")]
-        {
-            Self::is_elevated_windows()
-        }
-        #[cfg(target_os = "linux")]
-        {
-            unsafe { libc::geteuid() == 0 }
-        }
-        #[cfg(not(any(target_os = "windows", target_os = "linux")))]
-        {
-            false
-        }
-    }
-
-    #[cfg(target_os = "windows")]
-    fn is_elevated_windows() -> bool {
-        use windows_sys::Win32::Security::{GetTokenInformation, TokenElevation, TOKEN_QUERY};
-        use windows_sys::Win32::Foundation::CloseHandle;
-        use windows_sys::Win32::System::Threading::{GetCurrentProcess, OpenProcessToken};
-
-        unsafe {
-            let mut token: isize = 0;
-            if OpenProcessToken(GetCurrentProcess(), TOKEN_QUERY, &mut token) == 0 {
-                return false;
-            }
-            let mut elevation: u32 = 0;
-            let mut return_length: u32 = 0;
-            let result = GetTokenInformation(
-                token,
-                TokenElevation,
-                &mut elevation as *mut _ as *mut std::ffi::c_void,
-                std::mem::size_of::<u32>() as u32,
-                &mut return_length,
-            );
-            CloseHandle(token);
-            result != 0 && elevation != 0
-        }
-    }
-
-    pub fn restart_as_admin() -> Result<(), AppError> {
-        let exe_path = std::env::current_exe()
-            .map_err(|e| AppError::new("RESTART_ERROR", &format!("Cannot get executable path: {}", e)))?;
-
-        #[cfg(target_os = "windows")]
-        {
-            Self::restart_as_admin_windows(&exe_path)?;
-        }
-
-        #[cfg(not(target_os = "windows"))]
-        {
-            return Err(AppError::new("RESTART_ERROR", "Restart as admin is only supported on Windows"));
-        }
-
-        // If we get here on Windows, the new process was launched; exit current
-        std::process::exit(0);
-    }
-
-    #[cfg(target_os = "windows")]
-    fn restart_as_admin_windows(exe_path: &std::path::Path) -> Result<(), AppError> {
-        let exe_str = exe_path.to_string_lossy();
-        let arg = format!("Start-Process -FilePath '{}' -Verb RunAs", exe_str);
-        let child = std::process::Command::new("powershell")
-            .args(["-Command", &arg])
-            .spawn()
-            .map_err(|e| AppError::new("RESTART_ERROR", &format!("Failed to restart as admin: {}", e)))?;
-        // Detach — we don't wait. The new elevated process starts independently.
-        drop(child);
-        Ok(())
-    }
-
     pub fn get_default_shell() -> Vec<ShellConfig> {
         let mut shells = Vec::new();
 
@@ -164,7 +93,6 @@ impl TerminalService {
         shell_id: &str,
         cols: u16,
         rows: u16,
-        elevated: bool,
         app_handle: AppHandle,
     ) -> Result<TerminalSession, AppError> {
         let shells = Self::get_default_shell();
@@ -179,11 +107,10 @@ impl TerminalService {
         // Log which shell we're spawning
         let shell_path = &shell.executable;
         log::info!(
-            "Spawning terminal {} with shell: {} (args: {:?}, elevated: {})",
+            "Spawning terminal {} with shell: {} (args: {:?})",
             id,
             shell_path,
             shell.args,
-            elevated,
         );
 
         // ── 1. Create the PTY ──────────────────────────────────────────
@@ -205,32 +132,9 @@ impl TerminalService {
             })?;
 
         // ── 2. Build the shell command ──────────────────────────────────
-        let mut cmd;
-        if elevated {
-            #[cfg(target_os = "linux")]
-            {
-                cmd = CommandBuilder::new("sudo");
-                cmd.arg("-H");
-                cmd.arg("-u");
-                cmd.arg("root");
-                cmd.arg(shell_path);
-                for arg in &shell.args {
-                    cmd.arg(arg);
-                }
-            }
-            #[cfg(not(target_os = "linux"))]
-            {
-                // On Windows, elevated app already has admin — child inherits it
-                cmd = CommandBuilder::new(shell_path);
-                for arg in &shell.args {
-                    cmd.arg(arg);
-                }
-            }
-        } else {
-            cmd = CommandBuilder::new(shell_path);
-            for arg in &shell.args {
-                cmd.arg(arg);
-            }
+        let mut cmd = CommandBuilder::new(shell_path);
+        for arg in &shell.args {
+            cmd.arg(arg);
         }
         if !cwd.is_empty() {
             cmd.cwd(std::path::Path::new(cwd));
@@ -269,7 +173,6 @@ impl TerminalService {
             status: TerminalStatus::Running,
             exit_code: None,
             created_at: now,
-            elevated,
         };
 
         let pty_session = PtySession {
@@ -321,12 +224,10 @@ impl TerminalService {
                         break;
                     }
                     Ok(n) => {
-                        // Send PTY output to the frontend via Tauri event
-                        let data = String::from_utf8_lossy(&buf[..n]).to_string();
-                        // Emit as plain string payload (frontend listens with listen<string>)
+                        let data = buf[..n].to_vec();
                         let _ = app_clone.emit(
                             &format!("terminal://output/{}", id_clone),
-                            &data,
+                            data,
                         );
                     }
                     Err(e) => {

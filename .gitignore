@@ -6,7 +6,7 @@ dist-ssr/
 *.local
 
 # ── Rust / Tauri ─────────────────────────────────────
-src-tauri/target/
+target/
 src-tauri/gen/schemas/
 
 # ── Build artifacts ──────────────────────────────────

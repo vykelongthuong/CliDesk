@@ -91,7 +91,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProject, activeTab, onTabCh
     ? (gitCache[activeProject.id] ?? { state: 'idle', status: null, error: null })
     : { state: 'idle', status: null, error: null };
 
-  const handleNewTerminal = useCallback((options?: { elevated?: boolean }) => {
+  const handleNewTerminal = useCallback(() => {
     if (!activeProject) return;
 
     terminalCountRef.current += 1;
@@ -106,7 +106,6 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProject, activeTab, onTabCh
         projectName: activeProject.name,
         projectPath: activeProject.path,
         projectColor,
-        elevated: options?.elevated ?? false,
       },
     ]);
     setActiveTerminalId(tempId);
@@ -232,6 +231,7 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProject, activeTab, onTabCh
             onNewTerminal={handleNewTerminal}
             onCloseTerminal={handleCloseTerminal}
             onSelectTerminal={setActiveTerminalId}
+            isActive={activeTab === 'terminals'}
             lang={lang}
           />
         </div>
