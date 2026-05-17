@@ -7,10 +7,6 @@ use chrono::Utc;
 pub struct FileService;
 
 impl FileService {
-    pub fn new() -> Self {
-        Self
-    }
-
     pub fn list_directory(project_root: &str, relative_path: &str) -> Result<Vec<FileTreeItem>, AppError> {
         let target = SecurityService::resolve_project_path_no_fs(Path::new(project_root), relative_path)?;
 

@@ -49,6 +49,7 @@ run-dev.bat
 run-dev.sh
 AI_AGENT_PROMPT_TEMPLATE.md
 AGENTS.md
+CLIDESK_LAUNCH_FLOW_TASK.md
 
 # ── AI assistant config ──────────────────────────────
 .claude/

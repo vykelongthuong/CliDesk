@@ -35,6 +35,8 @@ const App: React.FC = () => {
   });
   const [lang, setLang] = useState<Language>('vi');
   const [theme, setTheme] = useState<Theme>('dark');
+  const [showLanguageSelect, setShowLanguageSelect] = useState<boolean>(true);
+  const [settingsLoaded, setSettingsLoaded] = useState<boolean>(false);
 
   const loadRuntimeInfo = useCallback(async () => {
     try {
@@ -45,6 +47,17 @@ const App: React.FC = () => {
       console.error('Failed to load runtime info:', err);
       return null;
     }
+  }, []);
+
+  // Handle first-run language selection
+  const handleSelectFirstLanguage = useCallback(async (newLang: Language) => {
+    setLang(newLang);
+    try {
+      await setSetting('ui.language', newLang);
+    } catch (err) {
+      console.error('Failed to save language:', err);
+    }
+    setShowLanguageSelect(false);
   }, []);
 
   // Load launch metadata, language, and theme from backend settings on mount
@@ -61,9 +74,12 @@ const App: React.FC = () => {
           if (savedLang !== launchLang) {
             await setSetting('ui.language', launchLang);
           }
+          setShowLanguageSelect(false);
         } else if (savedLang === 'en' || savedLang === 'vi') {
           setLang(savedLang);
+          setShowLanguageSelect(false);
         }
+        // If no language is set, showLanguageSelect stays true (first-run)
 
         // Load theme
         const savedTheme = settings['ui.theme'];
@@ -72,6 +88,8 @@ const App: React.FC = () => {
         }
       } catch (err) {
         console.error('Failed to load settings:', err);
+      } finally {
+        setSettingsLoaded(true);
       }
     })();
   }, [loadRuntimeInfo]);
@@ -185,6 +203,44 @@ const App: React.FC = () => {
   const activeProject = projects.length === 0 ? null : (computedActiveProject || lastActiveProjectRef.current);
 
   const t = useCallback((key: string) => translate(key, lang), [lang]);
+
+  // Language select overlay (shown on first run before entering dashboard)
+  if (showLanguageSelect && settingsLoaded) {
+    const lt = (key: string) => translate(key, lang);
+    return (
+      <div className="language-select-overlay">
+        <div className="language-select-modal">
+          <h2 className="language-select-title">{lt('language_select.title')}</h2>
+          <p className="language-select-desc">{lt('language_select.desc')}</p>
+          <div className="language-select-buttons">
+            <button
+              className="language-select-btn"
+              onClick={() => handleSelectFirstLanguage('vi')}
+            >
+              <span className="language-select-btn-icon">🇻🇳</span>
+              <span className="language-select-btn-label">{lt('language_select.btn_vi')}</span>
+            </button>
+            <button
+              className="language-select-btn"
+              onClick={() => handleSelectFirstLanguage('en')}
+            >
+              <span className="language-select-btn-icon">🇬🇧</span>
+              <span className="language-select-btn-label">{lt('language_select.btn_en')}</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+
+  // Loading state while settings load
+  if (!settingsLoaded) {
+    return (
+      <div className="app-loading">
+        <div className="app-loading-spinner" />
+      </div>
+    );
+  }
 
   return (
     <div className="app-layout">

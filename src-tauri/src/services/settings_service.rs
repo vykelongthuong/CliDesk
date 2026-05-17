@@ -5,10 +5,6 @@ use chrono::Utc;
 pub struct SettingsService;
 
 impl SettingsService {
-    pub fn new() -> Self {
-        Self
-    }
-
     pub fn get_all(conn: &Connection) -> Result<std::collections::HashMap<String, String>, AppError> {
         let mut stmt = conn
             .prepare("SELECT key, value FROM settings")
@@ -23,20 +19,6 @@ impl SettingsService {
             .collect();
 
         Ok(settings)
-    }
-
-    pub fn get(conn: &Connection, key: &str) -> Result<Option<String>, AppError> {
-        let result: Result<String, _> = conn.query_row(
-            "SELECT value FROM settings WHERE key = ?1",
-            rusqlite::params![key],
-            |row| row.get(0),
-        );
-
-        match result {
-            Ok(value) => Ok(Some(value)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(e) => Err(AppError::new("DB_QUERY_ERROR", &format!("Failed to get setting: {}", e))),
-        }
     }
 
     pub fn set(conn: &Connection, key: &str, value: &str) -> Result<(), AppError> {

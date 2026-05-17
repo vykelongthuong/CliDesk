@@ -121,25 +121,11 @@ impl std::fmt::Display for AppError {
 impl std::error::Error for AppError {}
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct TerminalOutputEvent {
-    pub terminal_id: String,
-    pub data: String,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerminalExitEvent {
     pub terminal_id: String,
     pub exit_code: Option<i32>,
     pub reason: String,
     pub message: Option<String>,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-pub struct ShellConfigOption {
-    pub id: String,
-    pub label: String,
-    pub executable: String,
-    pub args: Vec<String>,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

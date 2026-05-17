@@ -7,10 +7,6 @@ use std::path::Path;
 pub struct ProjectService;
 
 impl ProjectService {
-    pub fn new() -> Self {
-        Self
-    }
-
     pub fn list_projects(conn: &Connection) -> Result<Vec<Project>, AppError> {
         let mut stmt = conn
             .prepare("SELECT id, name, path, created_at, updated_at, last_opened_at FROM projects ORDER BY last_opened_at DESC, updated_at DESC")

@@ -1,6 +1,17 @@
 #!/usr/bin/env node
 // CliDesk npm launcher.
 //
+// Default flow (clidesk):
+//   - Copy binaries to runtime cache
+//   - Spawn clidesk.exe directly (detached)
+//   - Return terminal prompt immediately
+//   - No terminal menu, no launcher interactive
+//
+// --wait:      Use native launcher with --no-menu, keep terminal attached
+// --debug-launch: Print debug info then launch app
+// --version:   Print npm package version
+// --update:    Run npm i -g clidesk@latest
+//
 // The package stores signed binaries in vendor/, but it never runs them from
 // node_modules. Each package version is copied to a runtime cache first so npm
 // can update or uninstall the global package without Windows keeping vendor/
@@ -8,10 +19,10 @@
 
 const fs = require('fs');
 const path = require('path');
-const { execFileSync, spawn } = require('child_process');
+const { execFileSync, spawn, execSync } = require('child_process');
 
 const args = process.argv.slice(2);
-const debug = args.includes('--debug-launch');
+const hasFlag = (flag) => args.includes(flag);
 
 const packageRoot = path.resolve(__dirname, '..');
 const pkg = require(path.join(packageRoot, 'package.json'));
@@ -32,8 +43,8 @@ const vendorLauncher = path.join(vendorDir, 'clidesk-launcher.exe');
 
 const runtimeApp = path.join(runtimeDir, 'clidesk.exe');
 const runtimeLauncher = path.join(runtimeDir, 'clidesk-launcher.exe');
-const latestVersion = readLatestVersion();
-const updateAvailable = latestVersion ? isVersionNewer(latestVersion, version) : false;
+
+// ── Helpers ────────────────────────────────────────────────────
 
 function ensureFileExists(filePath, label) {
     if (!fs.existsSync(filePath)) {
@@ -65,16 +76,7 @@ function copyIfMissing(src, dest) {
     }
 }
 
-function printDebugInfo() {
-    console.log('[CliDesk] packageRoot:', packageRoot);
-    console.log('[CliDesk] vendorDir:', vendorDir);
-    console.log('[CliDesk] runtimeDir:', runtimeDir);
-    console.log('[CliDesk] launcherPath:', runtimeLauncher);
-    console.log('[CliDesk] appPath:', runtimeApp);
-    console.log('[CliDesk] version:', version);
-    console.log('[CliDesk] latestVersion:', latestVersion || '(unknown)');
-    console.log('[CliDesk] updateAvailable:', updateAvailable ? 'true' : 'false');
-}
+// ── Version helpers ────────────────────────────────────────────
 
 function readLatestVersion() {
     try {
@@ -134,22 +136,69 @@ function parseVersion(value) {
     return parts;
 }
 
-function main() {
-    copyIfMissing(vendorApp, runtimeApp);
-    copyIfMissing(vendorLauncher, runtimeLauncher);
+// ── Actions ────────────────────────────────────────────────────
 
-    if (debug) {
-        printDebugInfo();
+function actionVersion() {
+    console.log(version);
+    process.exit(0);
+}
+
+function actionUpdate() {
+    console.log('[CliDesk] Cập nhật clidesk từ npm...');
+    try {
+        execSync('npm i -g clidesk@latest', {
+            stdio: 'inherit',
+            windowsHide: true,
+        });
+        console.log('[CliDesk] Cập nhật hoàn tất. Chạy clidesk để dùng bản mới.');
+    } catch (err) {
+        console.error('[CliDesk] Cập nhật thất bại.');
+        console.error(err.message || err);
+        process.exit(1);
     }
+}
 
-    const child = spawn(runtimeLauncher, args, {
+function printDebugInfo() {
+    const latestVersion = readLatestVersion();
+    const updateAvailable = latestVersion ? isVersionNewer(latestVersion, version) : false;
+
+    console.log('[CliDesk] packageRoot:', packageRoot);
+    console.log('[CliDesk] vendorDir:', vendorDir);
+    console.log('[CliDesk] runtimeDir:', runtimeDir);
+    console.log('[CliDesk] launcherPath:', runtimeLauncher);
+    console.log('[CliDesk] appPath:', runtimeApp);
+    console.log('[CliDesk] version:', version);
+    console.log('[CliDesk] latestVersion:', latestVersion || '(unknown)');
+    console.log('[CliDesk] updateAvailable:', updateAvailable ? 'true' : 'false');
+}
+
+function actionDebugLaunch() {
+    printDebugInfo();
+    // After debug info, launch app directly (detached) so terminal is free
+    console.log('[CliDesk] Khởi động CliDesk...');
+    const child = spawn(runtimeApp, [], {
         cwd: runtimeDir,
         env: {
             ...process.env,
             CLIDESK_VERSION: version,
-            CLIDESK_LATEST_VERSION: latestVersion || '',
-            CLIDESK_UPDATE_AVAILABLE: updateAvailable ? '1' : '0',
-            CLIDESK_UPDATE_COMMAND: 'npm i -g clidesk',
+            CLIDESK_LAUNCH_LANG: '',
+        },
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+    });
+    child.unref();
+    process.exit(0);
+}
+
+function actionWait() {
+    // Use native launcher with --no-menu flag for Job Object lifecycle
+    const child = spawn(runtimeLauncher, ['--no-menu'], {
+        cwd: runtimeDir,
+        env: {
+            ...process.env,
+            CLIDESK_VERSION: version,
+            CLIDESK_LAUNCH_LANG: '',
         },
         stdio: 'inherit',
         windowsHide: false,
@@ -161,18 +210,68 @@ function main() {
 
     child.on('error', (err) => {
         console.error('[CliDesk] Không thể chạy launcher:', err.message);
-        console.error('[CliDesk] Path:', runtimeLauncher);
         process.exit(1);
     });
+}
+
+function actionDefault() {
+    // Copy binaries to runtime cache
+    copyIfMissing(vendorApp, runtimeApp);
+    copyIfMissing(vendorLauncher, runtimeLauncher);
+
+    // Spawn app directly (detached), no launcher, no terminal menu
+    const child = spawn(runtimeApp, [], {
+        cwd: runtimeDir,
+        env: {
+            ...process.env,
+            CLIDESK_VERSION: version,
+            CLIDESK_LAUNCH_LANG: '',
+        },
+        detached: true,
+        stdio: 'ignore',
+        windowsHide: true,
+    });
+    child.unref();
+    process.exit(0);
+}
+
+// ── Main ───────────────────────────────────────────────────────
+
+function main() {
+    // Handle flags that don't need binaries
+    if (hasFlag('--version') || hasFlag('-v')) {
+        actionVersion();
+    }
+
+    if (hasFlag('--update')) {
+        actionUpdate();
+    }
+
+    // Ensure binaries exist in runtime cache
+    try {
+        copyIfMissing(vendorApp, runtimeApp);
+        copyIfMissing(vendorLauncher, runtimeLauncher);
+    } catch (err) {
+        console.error('[CliDesk] Không thể chuẩn bị runtime CliDesk.');
+        console.error('[CliDesk] Lỗi:', err && err.message ? err.message : err);
+        process.exit(1);
+    }
+
+    if (hasFlag('--debug-launch')) {
+        actionDebugLaunch();
+    }
+
+    if (hasFlag('--wait')) {
+        actionWait();
+    }
+
+    // Default: launch app detached, return prompt immediately
+    actionDefault();
 }
 
 try {
     main();
 } catch (err) {
-    console.error('[CliDesk] Không thể chuẩn bị runtime CliDesk.');
-    console.error('[CliDesk] Lỗi:', err && err.message ? err.message : err);
-    if (debug) {
-        printDebugInfo();
-    }
+    console.error('[CliDesk] Lỗi không xác định:', err && err.message ? err.message : err);
     process.exit(1);
 }

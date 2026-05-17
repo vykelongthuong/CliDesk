@@ -51,10 +51,6 @@ fn run_git_output_with_timeout(
 pub struct GitService;
 
 impl GitService {
-    pub fn new() -> Self {
-        Self
-    }
-
     pub fn get_status(project_root: &str) -> Result<GitStatus, AppError> {
         // Check if it's a git repo (rev-parse is fast, no timeout needed normally)
         let (_ok, _out) = run_git_output_with_timeout(
