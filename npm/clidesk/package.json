@@ -1,6 +1,6 @@
 {
   "name": "clidesk",
-  "version": "0.1.4",
+  "version": "0.1.6",
   "description": "CliDesk desktop app launcher — install with npm i -g clidesk",
   "license": "Apache-2.0",
   "repository": {
