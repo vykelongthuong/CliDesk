@@ -1,5 +1,6 @@
-/* ===== CSS Variables & Global Reset ===== */
-:root {
+/* ===== CSS Variables & Theme System ===== */
+:root,
+[data-theme="dark"] {
   --bg-primary: #1e1e2e;
   --bg-secondary: #181825;
   --bg-surface: #242438;
@@ -15,15 +16,70 @@
   --danger: #f38ba8;
   --success: #a6e3a1;
   --warning: #f9e2af;
+  --editor-bg: #1e1e1e;
+  --editor-tab-bg: #2d2d2d;
+  --editor-tab-active-bg: #1e1e1e;
+  --editor-tab-text: #969696;
+  --editor-tab-active-text: #e0e0e0;
+  --editor-border: #3c3c3c;
+  --editor-statusbar-bg: #007acc;
+  --editor-statusbar-text: #fff;
+  --editor-context-bg: #2d2d2d;
+  --editor-context-border: #555;
+  --editor-context-hover: #094771;
+  --markdown-bg: #1e1e1e;
+  --markdown-text: #d4d4d4;
+  --markdown-heading: #f0f0f0;
+  --markdown-pre-bg: #151515;
+  --markdown-blockquote-bg: rgba(0, 122, 204, 0.08);
+  --markdown-table-header: #252526;
+  --markdown-toolbar-bg: #252526;
+  --editor-toolbar-bg: #252526;
   --sidebar-width: 260px;
   --tab-height: 36px;
   --toolbar-height: 36px;
-  --statusbar-height: 24px;
   --font-mono: 'Cascadia Code', 'Fira Code', 'Consolas', 'JetBrains Mono', monospace;
   --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   --radius: 6px;
   --radius-sm: 4px;
   --transition: 150ms ease;
+}
+
+[data-theme="light"] {
+  --bg-primary: #f5f5f9;
+  --bg-secondary: #e9e9f0;
+  --bg-surface: #ffffff;
+  --bg-hover: #dddee8;
+  --bg-active: #d0d1dd;
+  --text-primary: #1e1e2e;
+  --text-secondary: #4a4a5a;
+  --text-muted: #7a7a8a;
+  --accent: #4a7dd4;
+  --accent-hover: #3a6bc4;
+  --border: #c8c9d4;
+  --border-light: #b0b1bc;
+  --danger: #d55a6e;
+  --success: #3c9d5c;
+  --warning: #c8960a;
+  --editor-bg: #ffffff;
+  --editor-tab-bg: #ececec;
+  --editor-tab-active-bg: #ffffff;
+  --editor-tab-text: #707070;
+  --editor-tab-active-text: #1e1e1e;
+  --editor-border: #d4d4d4;
+  --editor-statusbar-bg: #4a7dd4;
+  --editor-statusbar-text: #ffffff;
+  --editor-context-bg: #f5f5f5;
+  --editor-context-border: #c0c0c0;
+  --editor-context-hover: #4a7dd4;
+  --markdown-bg: #ffffff;
+  --markdown-text: #333333;
+  --markdown-heading: #1a1a1a;
+  --markdown-pre-bg: #f5f5f5;
+  --markdown-blockquote-bg: rgba(74, 125, 212, 0.08);
+  --markdown-table-header: #f0f0f0;
+  --markdown-toolbar-bg: #e8e8e8;
+  --editor-toolbar-bg: #e8e8e8;
 }
 
 * {
@@ -857,13 +913,13 @@ body {
   display: flex;
   flex-direction: column;
   min-width: 0;
-  background: #1e1e1e;
+  background: var(--editor-bg);
 }
 
 .editor-tabs {
   display: flex;
-  background: #252526;
-  border-bottom: 1px solid #3c3c3c;
+  background: var(--editor-toolbar-bg, var(--markdown-toolbar-bg));
+  border-bottom: 1px solid var(--editor-border);
   overflow-x: auto;
   min-height: 35px;
 }
@@ -873,7 +929,7 @@ body {
 }
 
 .editor-tabs::-webkit-scrollbar-thumb {
-  background: #555;
+  background: var(--border-light);
   border-radius: 2px;
 }
 
@@ -882,24 +938,24 @@ body {
   align-items: center;
   gap: 6px;
   padding: 6px 12px;
-  background: #2d2d2d;
-  border-right: 1px solid #3c3c3c;
+  background: var(--editor-tab-bg);
+  border-right: 1px solid var(--editor-border);
   cursor: pointer;
   font-size: 12px;
-  color: #969696;
+  color: var(--editor-tab-text);
   white-space: nowrap;
   transition: background var(--transition);
   min-width: 0;
 }
 
 .editor-tab:hover {
-  background: #333;
+  background: var(--bg-hover);
 }
 
 .editor-tab.active {
-  background: #1e1e1e;
-  color: #e0e0e0;
-  border-bottom: 1px solid #1e1e1e;
+  background: var(--editor-tab-active-bg);
+  color: var(--editor-tab-active-text);
+  border-bottom: 1px solid var(--editor-tab-active-bg);
   margin-bottom: -1px;
 }
 
@@ -933,8 +989,8 @@ body {
 .editor-context-menu {
   position: fixed;
   z-index: 10000;
-  background: #2d2d2d;
-  border: 1px solid #555;
+  background: var(--editor-context-bg);
+  border: 1px solid var(--editor-context-border);
   border-radius: 6px;
   min-width: 160px;
   padding: 4px 0;
@@ -947,7 +1003,7 @@ body {
   padding: 6px 16px;
   background: none;
   border: none;
-  color: #e0e0e0;
+  color: var(--editor-tab-active-text);
   font-size: 12px;
   text-align: left;
   cursor: pointer;
@@ -955,7 +1011,7 @@ body {
 }
 
 .editor-context-menu-item:hover {
-  background: #094771;
+  background: var(--editor-context-hover);
   color: #fff;
 }
 
@@ -988,8 +1044,8 @@ body {
   align-items: center;
   gap: 16px;
   padding: 2px 12px;
-  background: #007acc;
-  color: #fff;
+  background: var(--editor-statusbar-bg);
+  color: var(--editor-statusbar-text);
   font-size: 11px;
   min-height: 22px;
 }
@@ -1001,35 +1057,46 @@ body {
 }
 
 
+.editor-statusbar {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+  padding: 2px 12px;
+  background: var(--editor-statusbar-bg);
+  color: var(--editor-statusbar-text);
+  font-size: 11px;
+  min-height: 22px;
+}
+
 .markdown-toolbar {
   display: flex;
   align-items: center;
   gap: 6px;
   padding: 6px 10px;
-  background: #252526;
-  border-bottom: 1px solid #3c3c3c;
+  background: var(--markdown-toolbar-bg);
+  border-bottom: 1px solid var(--editor-border);
   flex-shrink: 0;
 }
 
 .markdown-mode-btn {
   padding: 4px 10px;
-  border: 1px solid #3c3c3c;
+  border: 1px solid var(--editor-border);
   border-radius: 4px;
-  background: #2d2d2d;
-  color: #c8c8c8;
+  background: var(--editor-tab-bg);
+  color: var(--editor-tab-text);
   font-size: 12px;
   cursor: pointer;
   transition: all var(--transition);
 }
 
 .markdown-mode-btn:hover {
-  background: #333;
-  color: #fff;
+  background: var(--bg-hover);
+  color: var(--editor-tab-active-text);
 }
 
 .markdown-mode-btn.active {
-  background: #094771;
-  border-color: #007acc;
+  background: var(--editor-context-hover);
+  border-color: var(--accent);
   color: #fff;
 }
 
@@ -1037,14 +1104,14 @@ body {
   flex: 1;
   min-height: 0;
   overflow: auto;
-  background: #1e1e1e;
+  background: var(--markdown-bg);
 }
 
 .markdown-preview-content {
   max-width: 920px;
   margin: 0 auto;
   padding: 28px 36px 48px;
-  color: #d4d4d4;
+  color: var(--markdown-text);
   line-height: 1.7;
   font-size: 14px;
 }
@@ -1055,20 +1122,20 @@ body {
 .markdown-preview-content h4,
 .markdown-preview-content h5,
 .markdown-preview-content h6 {
-  color: #f0f0f0;
+  color: var(--markdown-heading);
   line-height: 1.25;
   margin: 1.4em 0 0.65em;
 }
 
 .markdown-preview-content h1 {
   font-size: 28px;
-  border-bottom: 1px solid #3c3c3c;
+  border-bottom: 1px solid var(--editor-border);
   padding-bottom: 8px;
 }
 
 .markdown-preview-content h2 {
   font-size: 22px;
-  border-bottom: 1px solid #333;
+  border-bottom: 1px solid var(--border);
   padding-bottom: 6px;
 }
 
@@ -1082,7 +1149,7 @@ body {
 }
 
 .markdown-preview-content a {
-  color: #4fc1ff;
+  color: var(--accent);
   text-decoration: none;
 }
 
@@ -1091,19 +1158,19 @@ body {
 }
 
 .markdown-preview-content code {
-  background: #2d2d2d;
-  border: 1px solid #3c3c3c;
+  background: var(--markdown-pre-bg);
+  border: 1px solid var(--border);
   border-radius: 4px;
   padding: 1px 5px;
-  color: #f8f8f2;
+  color: var(--text-primary);
   font-family: 'Cascadia Code', 'Fira Code', Consolas, monospace;
   font-size: 0.92em;
 }
 
 .markdown-preview-content pre {
   overflow: auto;
-  background: #151515;
-  border: 1px solid #333;
+  background: var(--markdown-pre-bg);
+  border: 1px solid var(--editor-border);
   border-radius: 8px;
   padding: 14px 16px;
 }
@@ -1115,10 +1182,10 @@ body {
 }
 
 .markdown-preview-content blockquote {
-  border-left: 4px solid #007acc;
+  border-left: 4px solid var(--accent);
   padding: 8px 16px;
-  color: #b8b8b8;
-  background: rgba(0, 122, 204, 0.08);
+  color: var(--text-secondary);
+  background: var(--markdown-blockquote-bg);
 }
 
 .markdown-preview-content table {
@@ -1130,23 +1197,23 @@ body {
 
 .markdown-preview-content th,
 .markdown-preview-content td {
-  border: 1px solid #3c3c3c;
+  border: 1px solid var(--editor-border);
   padding: 6px 10px;
 }
 
 .markdown-preview-content th {
-  background: #252526;
-  color: #f0f0f0;
+  background: var(--markdown-table-header);
+  color: var(--markdown-heading);
 }
 
 .markdown-preview-content hr {
   border: none;
-  border-top: 1px solid #3c3c3c;
+  border-top: 1px solid var(--editor-border);
   margin: 24px 0;
 }
 
 .markdown-preview-empty {
-  color: #969696;
+  color: var(--text-muted);
   font-style: italic;
 }
 
@@ -1166,7 +1233,7 @@ body {
 }
 
 .markdown-editor-half {
-  border-right: 1px solid #3c3c3c;
+  border-right: 1px solid var(--editor-border);
 }
 
 .markdown-preview-half .markdown-preview-content {
@@ -1182,7 +1249,7 @@ body {
 
   .markdown-editor-half {
     border-right: none;
-    border-bottom: 1px solid #3c3c3c;
+    border-bottom: 1px solid var(--editor-border);
   }
 }
 

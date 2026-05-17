@@ -9,7 +9,7 @@ interface SidebarProps {
   projects: Project[];
   activeProjectId: string | null;
   onSelectProject: (id: string) => void;
-  onProjectsChanged: () => void;
+  onProjectsChanged: () => Promise<void>;
   collapsed: boolean;
   onToggleCollapse: () => void;
   onSettingsClick: () => void;
@@ -46,8 +46,8 @@ const Sidebar: React.FC<SidebarProps> = ({
       });
       if (selectedPath) {
         const project = await addProject(selectedPath);
+        await onProjectsChanged();
         onSelectProject(project.id);
-        onProjectsChanged();
       }
     } catch (err) {
       console.error('Failed to add project:', err);

@@ -6,6 +6,8 @@ import { translate } from '../lib/i18n';
 interface SettingsPanelProps {
   lang: Language;
   onLanguageChange: (lang: Language) => void;
+  theme: 'dark' | 'light';
+  onThemeChange: (theme: 'dark' | 'light') => void;
   runtimeInfo: AppRuntimeInfo | null;
   updateState: 'idle' | 'updating' | 'success' | 'error';
   onUpdateCliDesk: () => void;
@@ -14,6 +16,8 @@ interface SettingsPanelProps {
 const SettingsPanel: React.FC<SettingsPanelProps> = ({
   lang,
   onLanguageChange,
+  theme,
+  onThemeChange,
   runtimeInfo,
   updateState,
   onUpdateCliDesk,
@@ -125,8 +129,12 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({
           </div>
           <select
             className="setting-select"
-            value={settings['ui.theme'] || 'dark'}
-            onChange={(e) => handleChange('ui.theme', e.target.value)}
+            value={theme}
+            onChange={(e) => {
+              const newTheme = e.target.value as 'dark' | 'light';
+              handleChange('ui.theme', newTheme);
+              onThemeChange(newTheme);
+            }}
             disabled={saving === 'ui.theme'}
           >
             <option value="dark">{translate('settings.theme_dark', lang)}</option>

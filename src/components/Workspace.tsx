@@ -26,6 +26,8 @@ interface WorkspaceProps {
   onTabChange: (tab: TabId) => void;
   lang: Language;
   onLanguageChange: (lang: Language) => void;
+  theme: 'dark' | 'light';
+  onThemeChange: (theme: 'dark' | 'light') => void;
   runtimeInfo: AppRuntimeInfo | null;
   updateState: 'idle' | 'updating' | 'success' | 'error';
   onUpdateCliDesk: () => void;
@@ -37,6 +39,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
   onTabChange,
   lang,
   onLanguageChange,
+  theme,
+  onThemeChange,
   runtimeInfo,
   updateState,
   onUpdateCliDesk,
@@ -275,6 +279,7 @@ const Workspace: React.FC<WorkspaceProps> = ({
               onContentLoaded={handleEditorContentLoaded}
               onDirtyChange={handleDirtyChange}
               lang={lang}
+              theme={theme}
             />
           </div>
         </div>
@@ -297,6 +302,8 @@ const Workspace: React.FC<WorkspaceProps> = ({
           <SettingsPanel
             lang={lang}
             onLanguageChange={onLanguageChange}
+            theme={theme}
+            onThemeChange={onThemeChange}
             runtimeInfo={runtimeInfo}
             updateState={updateState}
             onUpdateCliDesk={onUpdateCliDesk}

@@ -541,16 +541,59 @@ fn spawn_in_job(app_path: &Path, lang: Language) -> Result<(HANDLE, process::Chi
     }
 }
 
+// ── Console hide helper ─────────────────────────────────────────
+/// Attempt to hide the console window. Returns true if the window was
+/// successfully hidden, false if GetConsoleWindow() returned null
+/// (e.g., in Windows Terminal or when no console is attached).
+fn hide_console_window() -> bool {
+    unsafe {
+        let hwnd = GetConsoleWindow();
+        if hwnd.is_null() {
+            return false;
+        }
+        ShowWindow(hwnd, SW_HIDE);
+        true
+    }
+}
+
+/// Returns true if running inside Windows Terminal (WT_SESSION is set).
+fn is_windows_terminal() -> bool {
+    std::env::var("WT_SESSION").is_ok()
+}
+
 // ── Hidden mode ────────────────────────────────────────────────
 fn run_hidden(app_path: &Path, lang: Language) {
     match spawn_in_job(app_path, lang) {
         Ok((job, mut child)) => {
-            unsafe {
-                let hwnd = GetConsoleWindow();
-                if !hwnd.is_null() {
-                    ShowWindow(hwnd, SW_HIDE);
+            let in_wt = is_windows_terminal();
+            let hidden = hide_console_window();
+
+            if hidden {
+                match lang {
+                    Language::Vi => println!("[CliDesk] Đã ẩn terminal. CliDesk đang chạy."),
+                    Language::En => println!("[CliDesk] Terminal hidden. CliDesk is running."),
+                }
+            } else if in_wt {
+                match lang {
+                    Language::Vi => println!(
+                        "[CliDesk] Không thể ẩn terminal trong Windows Terminal.\n\
+[CliDesk] CliDesk vẫn sẽ khởi động. Bạn có thể thu nhỏ tab Windows Terminal bằng tay."
+                    ),
+                    Language::En => println!(
+                        "[CliDesk] Unable to hide the terminal in Windows Terminal.\n\n[CliDesk] CliDesk will still start. You can manually minimize the Windows Terminal tab."
+                    ),
+                }
+            } else {
+                match lang {
+                    Language::Vi => println!(
+                        "[CliDesk] Không thể ẩn terminal trong môi trường hiện tại.\n\n[CliDesk] CliDesk vẫn sẽ khởi động."
+                    ),
+                    Language::En => println!(
+                        "[CliDesk] Unable to hide the terminal in this environment.\n\n[CliDesk] CliDesk will still start."
+                    ),
                 }
             }
+
             let _ = child.wait();
             unsafe {
                 CloseHandle(job);

@@ -22,6 +22,7 @@ interface EditorPanelProps {
   onContentLoaded: (relativePath: string, content: string, languageId?: string) => void;
   onDirtyChange: (relativePath: string, dirty: boolean) => void;
   lang: Language;
+  theme: 'dark' | 'light';
 }
 
 type MarkdownViewMode = 'edit' | 'preview' | 'split';
@@ -39,6 +40,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
   onContentLoaded,
   onDirtyChange,
   lang,
+  theme,
 }) => {
   const editorRefs = useRef<Record<string, any>>({});
   const loadedContentRef = useRef<Record<string, boolean>>({});
@@ -246,7 +248,7 @@ const EditorPanel: React.FC<EditorPanelProps> = ({
                   key={activeTab.relativePath}
                   defaultLanguage={activeTab.languageId || 'plaintext'}
                   value={content}
-                  theme="vs-dark"
+                  theme={theme === 'dark' ? 'vs-dark' : 'vs'}
                   options={{
                     fontSize: 14,
                     minimap: { enabled: false },

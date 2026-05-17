@@ -14,6 +14,8 @@ import {
 import { listen } from '@tauri-apps/api/event';
 import { translate } from './lib/i18n';
 
+type Theme = 'dark' | 'light';
+
 type TabId = 'terminals' | 'files' | 'git' | 'settings';
 
 const App: React.FC = () => {
@@ -32,6 +34,7 @@ const App: React.FC = () => {
     }
   });
   const [lang, setLang] = useState<Language>('vi');
+  const [theme, setTheme] = useState<Theme>('dark');
 
   const loadRuntimeInfo = useCallback(async () => {
     try {
@@ -44,7 +47,7 @@ const App: React.FC = () => {
     }
   }, []);
 
-  // Load launch metadata and language from backend settings on mount
+  // Load launch metadata, language, and theme from backend settings on mount
   useEffect(() => {
     (async () => {
       const info = await loadRuntimeInfo();
@@ -61,9 +64,14 @@ const App: React.FC = () => {
         } else if (savedLang === 'en' || savedLang === 'vi') {
           setLang(savedLang);
         }
+
+        // Load theme
+        const savedTheme = settings['ui.theme'];
+        if (savedTheme === 'dark' || savedTheme === 'light') {
+          setTheme(savedTheme);
+        }
       } catch (err) {
-        console.error('Failed to load language setting:', err);
-        // Default to Vietnamese
+        console.error('Failed to load settings:', err);
       }
     })();
   }, [loadRuntimeInfo]);
@@ -143,6 +151,15 @@ const App: React.FC = () => {
     setLang(newLang);
   }, []);
 
+  const handleThemeChange = useCallback((newTheme: Theme) => {
+    setTheme(newTheme);
+  }, []);
+
+  // Apply theme to document root
+  useEffect(() => {
+    document.documentElement.dataset.theme = theme;
+  }, [theme]);
+
   const handleUpdateCliDesk = useCallback(async () => {
     if (updateState === 'updating') return;
 
@@ -157,7 +174,15 @@ const App: React.FC = () => {
     }
   }, [loadRuntimeInfo, updateState]);
 
-  const activeProject = projects.find(p => p.id === activeProjectId) || null;
+  // Keep a reference to the last valid active project so Workspace
+  // never receives null when there are still running terminals.
+  // When all projects are removed, skip the fallback so the empty state shows.
+  const lastActiveProjectRef = useRef<Project | null>(null);
+  const computedActiveProject = projects.find(p => p.id === activeProjectId) || null;
+  if (computedActiveProject) {
+    lastActiveProjectRef.current = computedActiveProject;
+  }
+  const activeProject = projects.length === 0 ? null : (computedActiveProject || lastActiveProjectRef.current);
 
   const t = useCallback((key: string) => translate(key, lang), [lang]);
 
@@ -182,6 +207,8 @@ const App: React.FC = () => {
         onTabChange={setActiveTab}
         lang={lang}
         onLanguageChange={handleLanguageChange}
+        theme={theme}
+        onThemeChange={handleThemeChange}
         runtimeInfo={runtimeInfo}
         updateState={updateState}
         onUpdateCliDesk={handleUpdateCliDesk}

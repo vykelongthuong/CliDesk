@@ -18,6 +18,13 @@ src-tauri/gen/schemas/
 *.AppImage
 *.pdb
 
+# ── npm vendor binaries (keep directory, ignore binaries) ─
+npm/clidesk/vendor/*.exe
+npm/clidesk/vendor/*.pdb
+npm/clidesk/vendor/*.msi
+npm/clidesk/vendor/*.tgz
+!npm/clidesk/vendor/.gitkeep
+
 # ── Logs ─────────────────────────────────────────────
 logs
 *.log
@@ -60,3 +67,4 @@ AGENTS.md
 # ── Terminal output (app never saves logs) ───────────
 terminal_dashboard_ai_docs/
 npmclideskvendor/
+vite_output.txt
