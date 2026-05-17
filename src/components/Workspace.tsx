@@ -4,7 +4,15 @@ import FileExplorer from './FileExplorer';
 import EditorPanel from './EditorPanel';
 import GitPanel from './GitPanel';
 import SettingsPanel from './SettingsPanel';
-import type { Project, OpenEditorTab, Language, TerminalTab, GitCacheEntry, GitLoadState } from '../types';
+import type {
+  Project,
+  OpenEditorTab,
+  Language,
+  TerminalTab,
+  GitCacheEntry,
+  GitLoadState,
+  AppRuntimeInfo,
+} from '../types';
 import { getProjectColor } from '../lib/projectColors';
 import { translate } from '../lib/i18n';
 import { getGitStatus } from '../lib/commands';
@@ -18,9 +26,21 @@ interface WorkspaceProps {
   onTabChange: (tab: TabId) => void;
   lang: Language;
   onLanguageChange: (lang: Language) => void;
+  runtimeInfo: AppRuntimeInfo | null;
+  updateState: 'idle' | 'updating' | 'success' | 'error';
+  onUpdateCliDesk: () => void;
 }
 
-const Workspace: React.FC<WorkspaceProps> = ({ activeProject, activeTab, onTabChange, lang, onLanguageChange }) => {
+const Workspace: React.FC<WorkspaceProps> = ({
+  activeProject,
+  activeTab,
+  onTabChange,
+  lang,
+  onLanguageChange,
+  runtimeInfo,
+  updateState,
+  onUpdateCliDesk,
+}) => {
   const [terminalTabs, setTerminalTabs] = useState<TerminalTab[]>([]);
   const [activeTerminalId, setActiveTerminalId] = useState<string | null>(null);
   const [editorTabs, setEditorTabs] = useState<OpenEditorTab[]>([]);
@@ -274,7 +294,13 @@ const Workspace: React.FC<WorkspaceProps> = ({ activeProject, activeTab, onTabCh
         </div>
 
         <div className={`workspace-panel ${activeTab === 'settings' ? 'active' : ''}`}>
-          <SettingsPanel lang={lang} onLanguageChange={onLanguageChange} />
+          <SettingsPanel
+            lang={lang}
+            onLanguageChange={onLanguageChange}
+            runtimeInfo={runtimeInfo}
+            updateState={updateState}
+            onUpdateCliDesk={onUpdateCliDesk}
+          />
         </div>
       </div>
     </main>

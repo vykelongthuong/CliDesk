@@ -1,66 +1,40 @@
-// CliDesk postinstall script
+// CliDesk postinstall script.
 //
-// Responsibilities:
-//   1. Detect platform (win32 x64)
-//   2. Ensure vendor/ directory exists
-//   3. Check if vendor/clidesk.exe exists
-//   4. If not, provide clear download instructions
-//
-// No admin required. No process spawned. No downloads.
+// It only validates that the package contains the Windows binaries needed by
+// bin/clidesk.js. It does not launch the app, copy runtime files, download
+// binaries, request admin rights, or use credentials.
 
 const fs = require('fs');
 const path = require('path');
 
-const VENDOR_DIR = path.join(__dirname, '..', 'vendor');
-const APP_BINARY = path.join(VENDOR_DIR, 'clidesk.exe');
+const vendorDir = path.join(__dirname, '..', 'vendor');
+const requiredBinaries = [
+    path.join(vendorDir, 'clidesk.exe'),
+    path.join(vendorDir, 'clidesk-launcher.exe'),
+];
 
 function main() {
-    // ── Platform check ──────────────────────────────────────
     if (process.platform !== 'win32') {
         console.warn('[CliDesk] This package only supports Windows x64.');
-        console.warn('[CliDesk] Skipping binary setup.');
         return;
     }
 
     if (process.arch !== 'x64') {
         console.warn('[CliDesk] This package only supports x64 architecture.');
-        console.warn('[CliDesk] Skipping binary setup.');
         return;
     }
 
-    // ── Ensure vendor directory ─────────────────────────────
-    if (!fs.existsSync(VENDOR_DIR)) {
-        fs.mkdirSync(VENDOR_DIR, { recursive: true });
-        console.log('[CliDesk] Created vendor directory.');
+    const missing = requiredBinaries.filter((filePath) => !fs.existsSync(filePath));
+    if (missing.length > 0) {
+        console.error('[CliDesk] Package is missing required binaries:');
+        for (const filePath of missing) {
+            console.error('[CliDesk] Missing:', filePath);
+        }
+        console.error('[CliDesk] Please reinstall with: npm i -g clidesk');
+        process.exit(1);
     }
 
-    // ── Check for existing binary ───────────────────────────
-    if (fs.existsSync(APP_BINARY)) {
-        console.log('[CliDesk] Binary found in vendor/.');
-        return;
-    }
-
-    // ── Binary missing — instructions ───────────────────────
-    console.log('');
-    console.log('╔══════════════════════════════════════════════╗');
-    console.log('║          CliDesk Binary Setup                ║');
-    console.log('╠══════════════════════════════════════════════╣');
-    console.log('║                                              ║');
-    console.log('║  CliDesk binary is not bundled yet.           ║');
-    console.log('║                                              ║');
-    console.log('║  To complete setup:                           ║');
-    console.log('║                                              ║');
-    console.log('║  1. Download clidesk.exe from:                ║');
-    console.log('║     GitHub Releases                           ║');
-    console.log('║     https://github.com/vykelongthuong/CliDesk  ║');
-    console.log('║                                              ║');
-    console.log('║  2. Place it in:                              ║');
-    console.log('║     ' + VENDOR_DIR.padEnd(42) + '║');
-    console.log('║                                              ║');
-    console.log('║  3. Run: clidesk                              ║');
-    console.log('║                                              ║');
-    console.log('╚══════════════════════════════════════════════╝');
-    console.log('');
+    console.log('[CliDesk] Vendor binaries found.');
 }
 
 main();

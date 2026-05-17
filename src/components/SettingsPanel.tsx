@@ -1,14 +1,23 @@
 import React, { useState, useEffect, useCallback } from 'react';
-import type { Language } from '../types';
+import type { Language, AppRuntimeInfo } from '../types';
 import { getSettings, setSetting, hideWindow } from '../lib/commands';
 import { translate } from '../lib/i18n';
 
 interface SettingsPanelProps {
   lang: Language;
   onLanguageChange: (lang: Language) => void;
+  runtimeInfo: AppRuntimeInfo | null;
+  updateState: 'idle' | 'updating' | 'success' | 'error';
+  onUpdateCliDesk: () => void;
 }
 
-const SettingsPanel: React.FC<SettingsPanelProps> = ({ lang, onLanguageChange }) => {
+const SettingsPanel: React.FC<SettingsPanelProps> = ({
+  lang,
+  onLanguageChange,
+  runtimeInfo,
+  updateState,
+  onUpdateCliDesk,
+}) => {
   const [settings, setSettings] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState<string | null>(null);
@@ -21,7 +30,7 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ lang, onLanguageChange })
     try {
       const s = await getSettings();
       setSettings(s);
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error('Failed to load settings:', err);
     } finally {
       setLoading(false);
@@ -39,8 +48,9 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ lang, onLanguageChange })
       await setSetting(key, value);
       setSettings(prev => ({ ...prev, [key]: value }));
       setMessage({ type: 'success', text: t('settings.saved') });
-    } catch (err: any) {
-      setMessage({ type: 'error', text: err?.message || t('settings.save_failed') });
+    } catch (err: unknown) {
+      const errMsg = err instanceof Error ? err.message : typeof err === 'string' ? err : t('settings.save_failed');
+      setMessage({ type: 'error', text: errMsg });
     } finally {
       setSaving(null);
     }
@@ -212,9 +222,44 @@ const SettingsPanel: React.FC<SettingsPanelProps> = ({ lang, onLanguageChange })
         <div className="setting-item">
           <div className="setting-info">
             <label className="setting-label">CliDesk</label>
+            <p className="setting-description">
+              {translate('version.current', lang)}: {runtimeInfo?.current_version || 'dev'}
+            </p>
+            {runtimeInfo?.latest_version && (
+              <p className="setting-description">
+                {translate('version.latest', lang)}: {runtimeInfo.latest_version}
+              </p>
+            )}
             <p className="setting-description" dangerouslySetInnerHTML={{ __html: translate('settings.about_desc', lang) }} />
           </div>
         </div>
+        {runtimeInfo?.update_available && (
+          <div className="settings-update-box">
+            <div className="settings-update-copy">
+              <strong>{translate('version.update_available_title', lang)}</strong>
+              <span>
+                {translate('version.update_available_desc', lang)} {runtimeInfo.latest_version || ''}
+              </span>
+            </div>
+            <button
+              className="toolbar-btn"
+              onClick={onUpdateCliDesk}
+              disabled={updateState === 'updating'}
+            >
+              {updateState === 'updating' ? translate('version.updating', lang) : translate('version.update', lang)}
+            </button>
+          </div>
+        )}
+        {updateState === 'success' && (
+          <div className="settings-message settings-message-success">
+            {translate('version.updated', lang)}
+          </div>
+        )}
+        {updateState === 'error' && (
+          <div className="settings-message settings-message-error">
+            {translate('version.update_failed', lang)}
+          </div>
+        )}
       </div>
       </div>
     </div>

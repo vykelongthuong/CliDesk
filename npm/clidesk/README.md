@@ -6,7 +6,7 @@
 
 CliDesk is a local desktop dashboard for managing terminal sessions, files, and Git repositories — built with **Tauri v2** + **React** + **TypeScript** + **Rust**.
 
-This npm package is the launcher/downloader for the CliDesk desktop app.
+This npm package contains the CliDesk desktop app binary and a native Windows launcher.
 
 ## Install
 
@@ -20,7 +20,7 @@ npm i -g clidesk
 clidesk
 ```
 
-The launcher will find and open the CliDesk desktop app.
+The launcher copies the bundled binaries into a per-version runtime cache and opens CliDesk from there.
 
 ## Requirements
 
@@ -30,12 +30,12 @@ The launcher will find and open the CliDesk desktop app.
 
 ## How it works
 
-1. During `npm i -g clidesk`, the postinstall script checks for the CliDesk binary in `vendor/clidesk.exe`.
-2. If the binary is missing, instructions are shown to download it from GitHub Releases.
-3. When you run `clidesk`, the launcher spawns the desktop app.
+1. During `npm i -g clidesk`, the postinstall script checks that `vendor/clidesk.exe` and `vendor/clidesk-launcher.exe` are bundled.
+2. When you run `clidesk`, the npm wrapper copies both binaries to `%LOCALAPPDATA%\CliDesk\npm-runtime\<version>\`.
+3. The native launcher starts CliDesk from that runtime directory, not from `node_modules`.
 
-This npm package is only the launcher. The CliDesk desktop app itself is a Tauri application built from the [source repository](https://github.com/vykelongthuong/CliDesk).
+The CliDesk desktop app itself is a Tauri application built from the [source repository](https://github.com/vykelongthuong/CliDesk).
 
 ## License
 
-MIT
+Apache-2.0

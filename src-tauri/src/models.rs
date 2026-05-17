@@ -141,3 +141,18 @@ pub struct ShellConfigOption {
     pub executable: String,
     pub args: Vec<String>,
 }
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct AppRuntimeInfo {
+    pub current_version: String,
+    pub latest_version: Option<String>,
+    pub update_available: bool,
+    pub launch_language: Option<String>,
+    pub update_command: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct UpdateResult {
+    pub ok: bool,
+    pub message: String,
+}

@@ -26,7 +26,8 @@
 use std::env;
 use std::io::{self, Write};
 use std::mem;
-use std::path::PathBuf;
+use std::os::windows::io::AsRawHandle;
+use std::path::{Path, PathBuf};
 use std::process;
 
 // ── Windows type aliases ───────────────────────────────────────
@@ -44,9 +45,6 @@ const TRUE: BOOL = 1;
 
 // ── Constants ──────────────────────────────────────────────────
 const SW_HIDE: i32 = 0;
-const CREATE_NO_WINDOW: DWORD = 0x08000000;
-const INFINITE: DWORD = 0xFFFFFFFF;
-const WAIT_OBJECT_0: DWORD = 0;
 
 // Job Object info class
 const JobObjectExtendedLimitInformation: u32 = 9;
@@ -87,36 +85,6 @@ struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION {
 }
 
 #[repr(C)]
-struct STARTUPINFOW {
-    cb: DWORD,
-    lpReserved: LPCWSTR,
-    lpDesktop: LPCWSTR,
-    lpTitle: LPCWSTR,
-    dwX: DWORD,
-    dwY: DWORD,
-    dwXSize: DWORD,
-    dwYSize: DWORD,
-    dwXCountChars: DWORD,
-    dwYCountChars: DWORD,
-    dwFillAttribute: DWORD,
-    dwFlags: DWORD,
-    wShowWindow: u16,
-    cbReserved2: u16,
-    lpReserved2: *mut u8,
-    hStdInput: HANDLE,
-    hStdOutput: HANDLE,
-    hStdError: HANDLE,
-}
-
-#[repr(C)]
-struct PROCESS_INFORMATION {
-    hProcess: HANDLE,
-    hThread: HANDLE,
-    dwProcessId: DWORD,
-    dwThreadId: DWORD,
-}
-
-#[repr(C)]
 struct SECURITY_ATTRIBUTES {
     nLength: DWORD,
     lpSecurityDescriptor: LPVOID,
@@ -144,30 +112,7 @@ extern "system" {
         hProcess: HANDLE,
     ) -> BOOL;
 
-    fn CreateProcessW(
-        lpApplicationName: LPCWSTR,
-        lpCommandLine: LPCWSTR,
-        lpProcessAttributes: *const SECURITY_ATTRIBUTES,
-        lpThreadAttributes: *const SECURITY_ATTRIBUTES,
-        bInheritHandles: BOOL,
-        dwCreationFlags: DWORD,
-        lpEnvironment: LPVOID,
-        lpCurrentDirectory: LPCWSTR,
-        lpStartupInfo: *const STARTUPINFOW,
-        lpProcessInformation: *mut PROCESS_INFORMATION,
-    ) -> BOOL;
-
-    fn WaitForSingleObject(
-        hHandle: HANDLE,
-        dwMilliseconds: DWORD,
-    ) -> DWORD;
-
     fn CloseHandle(hObject: HANDLE) -> BOOL;
-
-    fn TerminateProcess(
-        hProcess: HANDLE,
-        uExitCode: u32,
-    ) -> BOOL;
 
     fn GetConsoleWindow() -> HWND;
 }
@@ -183,8 +128,46 @@ enum Mode {
     Visible,
 }
 
+#[derive(Clone, Copy)]
+enum Language {
+    Vi,
+    En,
+}
+
+struct VersionInfo {
+    current: String,
+    latest: Option<String>,
+    update_available: bool,
+    update_command: String,
+}
+
+impl Language {
+    fn code(self) -> &'static str {
+        match self {
+            Language::Vi => "vi",
+            Language::En => "en",
+        }
+    }
+
+    fn from_code(value: &str) -> Option<Self> {
+        match value.trim().to_lowercase().as_str() {
+            "vi" | "vietnamese" | "tieng-viet" | "tiếng-việt" => Some(Language::Vi),
+            "en" | "english" => Some(Language::En),
+            _ => None,
+        }
+    }
+}
+
 fn main() {
     let args: Vec<String> = env::args().collect();
+    let lang = language_from_args(&args)
+        .or_else(language_from_env)
+        .unwrap_or_else(|| {
+            print_language_menu();
+            read_language_choice()
+        });
+    let version_info = VersionInfo::from_env();
+    print_version_status(lang, &version_info);
 
     // ── CLI flags ──────────────────────────────────────────────
     let mode = if args.iter().any(|a| a == "--hidden") {
@@ -192,94 +175,263 @@ fn main() {
     } else if args.iter().any(|a| a == "--visible") {
         Mode::Visible
     } else {
-        print_menu();
-        read_choice()
+        print_mode_menu(lang, &version_info);
+        read_mode_choice(lang)
     };
 
     // ── Locate clidesk.exe ─────────────────────────────────────
-    let app_path = find_app_path(&args);
+    let app_path = match find_app_path(lang) {
+        Ok(path) => path,
+        Err(message) => {
+            eprintln!("{}", message);
+            process::exit(1);
+        }
+    };
 
     // ── Run ────────────────────────────────────────────────────
     match mode {
-        Mode::Hidden => run_hidden(&app_path),
-        Mode::Visible => run_visible(&app_path),
+        Mode::Hidden => run_hidden(&app_path, lang),
+        Mode::Visible => run_visible(&app_path, lang),
     }
 }
 
 // ── Menu ───────────────────────────────────────────────────────
 
-fn print_menu() {
+impl VersionInfo {
+    fn from_env() -> Self {
+        let current = env::var("CLIDESK_VERSION")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "dev".to_string());
+
+        let latest = env::var("CLIDESK_LATEST_VERSION")
+            .ok()
+            .map(|value| value.trim().to_string())
+            .filter(|value| !value.is_empty());
+
+        let update_available = env::var("CLIDESK_UPDATE_AVAILABLE")
+            .ok()
+            .map(|value| value == "1" || value.eq_ignore_ascii_case("true"))
+            .unwrap_or_else(|| {
+                latest
+                    .as_ref()
+                    .map(|latest_version| is_version_newer(latest_version, &current))
+                    .unwrap_or(false)
+            });
+
+        let update_command = env::var("CLIDESK_UPDATE_COMMAND")
+            .ok()
+            .filter(|value| !value.trim().is_empty())
+            .unwrap_or_else(|| "npm i -g clidesk".to_string());
+
+        Self {
+            current,
+            latest,
+            update_available,
+            update_command,
+        }
+    }
+}
+
+fn language_from_args(args: &[String]) -> Option<Language> {
+    for arg in args {
+        if arg == "--vi" {
+            return Some(Language::Vi);
+        }
+        if arg == "--en" {
+            return Some(Language::En);
+        }
+        if let Some(value) = arg.strip_prefix("--lang=") {
+            if let Some(lang) = Language::from_code(value) {
+                return Some(lang);
+            }
+        }
+    }
+
+    if let Some(pos) = args.iter().position(|arg| arg == "--lang") {
+        if let Some(value) = args.get(pos + 1) {
+            return Language::from_code(value);
+        }
+    }
+
+    None
+}
+
+fn language_from_env() -> Option<Language> {
+    env::var("CLIDESK_LAUNCH_LANG")
+        .ok()
+        .and_then(|value| Language::from_code(&value))
+}
+
+fn print_language_menu() {
     println!("╔══════════════════════════════════╗");
     println!("║        CliDesk Launcher          ║");
     println!("╠══════════════════════════════════╣");
-    println!("║  1. Ẩn terminal, chỉ hiện app    ║");
-    println!("║  2. Giữ terminal hiển thị        ║");
+    println!("║  1. Tiếng Việt                   ║");
+    println!("║  2. English                      ║");
     println!("╚══════════════════════════════════╝");
-    print!("Chọn (1 hoặc 2): ");
+    print!("Chọn ngôn ngữ / Select language (1 or 2): ");
     let _ = io::stdout().flush();
 }
 
-fn read_choice() -> Mode {
+fn read_language_choice() -> Language {
     loop {
-        let mut input = String::new();
-        if io::stdin().read_line(&mut input).is_err() {
-            process::exit(0);
-        }
+        let input = read_line_or_exit("[CliDesk] Không nhận được lựa chọn ngôn ngữ / No language choice received.");
         match input.trim() {
-            "1" => return Mode::Hidden,
-            "2" => return Mode::Visible,
+            "1" => return Language::Vi,
+            "2" => return Language::En,
             _ => {
-                print!("Nhập sai. Chọn 1 hoặc 2: ");
+                print!("Nhập sai / Invalid choice. Chọn 1 hoặc 2 / Choose 1 or 2: ");
                 let _ = io::stdout().flush();
             }
         }
     }
 }
 
-// ── Path resolution ───────────────────────────────────────────
-
-fn find_app_path(args: &[String]) -> String {
-    // 1. --app flag
-    if let Some(pos) = args.iter().position(|a| a == "--app") {
-        if let Some(path) = args.get(pos + 1) {
-            return path.trim_matches('"').replace('/', "\\");
+fn print_version_status(lang: Language, info: &VersionInfo) {
+    println!();
+    match lang {
+        Language::Vi => {
+            println!("[CliDesk] Phiên bản hiện tại: {}", info.current);
+            if info.update_available {
+                let latest = info.latest.as_deref().unwrap_or("latest");
+                println!("[CliDesk] Có bản mới: {}", latest);
+                println!("[CliDesk] Cập nhật: {}", info.update_command);
+            }
         }
-    }
-
-    // 2. CLIDESK_APP_PATH env
-    if let Ok(path) = env::var("CLIDESK_APP_PATH") {
-        return path;
-    }
-
-    // 3. Sibling in same directory as launcher (npm vendor layout)
-    if let Ok(exe) = env::current_exe() {
-        if let Some(parent) = exe.parent() {
-            let sibling = parent.join("clidesk.exe");
-            if sibling.exists() {
-                return sibling.to_string_lossy().to_string();
+        Language::En => {
+            println!("[CliDesk] Current version: {}", info.current);
+            if info.update_available {
+                let latest = info.latest.as_deref().unwrap_or("latest");
+                println!("[CliDesk] Update available: {}", latest);
+                println!("[CliDesk] Update: {}", info.update_command);
             }
         }
     }
+}
 
-    // 4. Dev fallback — look for cargo-built binary
-    let dev_patterns: &[&str] = &[
-        "src-tauri\\target\\x86_64-pc-windows-msvc\\release\\clidesk.exe",
-        "src-tauri\\target\\x86_64-pc-windows-msvc\\debug\\clidesk.exe",
-        "src-tauri\\target\\release\\clidesk.exe",
-        "src-tauri\\target\\debug\\clidesk.exe",
-        "target\\x86_64-pc-windows-msvc\\release\\clidesk.exe",
-        "target\\release\\clidesk.exe",
-    ];
-    for p in dev_patterns {
-        let path = PathBuf::from(p);
-        if path.exists() {
-            return p.to_string();
+fn print_mode_menu(lang: Language, info: &VersionInfo) {
+    match lang {
+        Language::Vi => {
+            println!("╔══════════════════════════════════╗");
+            println!("║        CliDesk Launcher          ║");
+            println!("║        Phiên bản {:<15}║", info.current);
+            println!("╠══════════════════════════════════╣");
+            println!("║  1. Ẩn terminal, chỉ hiện app    ║");
+            println!("║  2. Giữ terminal hiển thị        ║");
+            println!("╚══════════════════════════════════╝");
+            print!("Chọn (1 hoặc 2): ");
+        }
+        Language::En => {
+            println!("╔══════════════════════════════════╗");
+            println!("║        CliDesk Launcher          ║");
+            println!("║        Version {:<17}║", info.current);
+            println!("╠══════════════════════════════════╣");
+            println!("║  1. Hide terminal, app only      ║");
+            println!("║  2. Keep terminal visible        ║");
+            println!("╚══════════════════════════════════╝");
+            print!("Choose (1 or 2): ");
+        }
+    }
+    let _ = io::stdout().flush();
+}
+
+fn read_mode_choice(lang: Language) -> Mode {
+    loop {
+        let input = read_line_or_exit(match lang {
+            Language::Vi => "[CliDesk] Không nhận được lựa chọn launcher.",
+            Language::En => "[CliDesk] No launcher choice received.",
+        });
+        match input.trim() {
+            "1" => return Mode::Hidden,
+            "2" => return Mode::Visible,
+            _ => {
+                print!("{}", match lang {
+                    Language::Vi => "Nhập sai. Chọn 1 hoặc 2: ",
+                    Language::En => "Invalid choice. Choose 1 or 2: ",
+                });
+                let _ = io::stdout().flush();
+            }
+        }
+    }
+}
+
+fn read_line_or_exit(eof_message: &str) -> String {
+    let mut input = String::new();
+    match io::stdin().read_line(&mut input) {
+        Ok(0) => {
+            eprintln!("{}", eof_message);
+            process::exit(1);
+        }
+        Ok(_) => input,
+        Err(err) => {
+            eprintln!("[CliDesk] {}", err);
+            process::exit(1);
+        }
+    }
+}
+
+fn is_version_newer(latest: &str, current: &str) -> bool {
+    let latest_parts = parse_version_parts(latest);
+    let current_parts = parse_version_parts(current);
+
+    for index in 0..3 {
+        if latest_parts[index] > current_parts[index] {
+            return true;
+        }
+        if latest_parts[index] < current_parts[index] {
+            return false;
         }
     }
 
-    eprintln!("[CliDesk Launcher] Không tìm thấy clidesk.exe.");
-    eprintln!("Dùng --app <path> hoặc đặt biến môi trường CLIDESK_APP_PATH.");
-    process::exit(1);
+    false
+}
+
+fn parse_version_parts(version: &str) -> [u64; 3] {
+    let mut parts = [0_u64; 3];
+    for (index, segment) in version
+        .split(|ch| ch == '.' || ch == '-' || ch == '+')
+        .take(3)
+        .enumerate()
+    {
+        if let Ok(value) = segment.parse::<u64>() {
+            parts[index] = value;
+        }
+    }
+    parts
+}
+
+// ── Path resolution ───────────────────────────────────────────
+
+fn find_app_path(lang: Language) -> Result<PathBuf, String> {
+    let launcher_path = env::current_exe()
+        .map_err(|err| match lang {
+            Language::Vi => format!("[CliDesk] Không thể lấy đường dẫn launcher: {}", err),
+            Language::En => format!("[CliDesk] Failed to read launcher path: {}", err),
+        })?;
+
+    let app_dir = launcher_path
+        .parent()
+        .ok_or_else(|| match lang {
+            Language::Vi => "[CliDesk] Không thể xác định thư mục launcher.".to_string(),
+            Language::En => "[CliDesk] Failed to resolve launcher directory.".to_string(),
+        })?;
+
+    let app_path = app_dir.join("clidesk.exe");
+    if !app_path.exists() {
+        return Err(match lang {
+            Language::Vi => format!(
+                "[CliDesk] Không tìm thấy app binary.\n[CliDesk] Path: {}",
+                app_path.display()
+            ),
+            Language::En => format!(
+                "[CliDesk] App binary not found.\n[CliDesk] Path: {}",
+                app_path.display()
+            ),
+        });
+    }
+
+    Ok(app_path)
 }
 
 // ── Wide string helper ────────────────────────────────────────
@@ -288,110 +440,160 @@ fn to_wide(s: &str) -> Vec<u16> {
 }
 
 // ── Job Object helpers ─────────────────────────────────────────
-unsafe fn spawn_in_job(app_path: &str) -> (HANDLE, HANDLE) {
-    // Create Job Object with unique name
-    let job_name = format!("Local\\CliDeskJob_{}", process::id());
-    let job_name_wide = to_wide(&job_name);
-    let job = CreateJobObjectW(std::ptr::null(), job_name_wide.as_ptr());
-    if job.is_null() {
-        panic!("CreateJobObjectW failed");
+/// Spawn app via std::process::Command, then assign it to a Job Object
+/// with KILL_ON_JOB_CLOSE so the app is killed when the launcher exits.
+fn spawn_in_job(app_path: &Path, lang: Language) -> Result<(HANDLE, process::Child), String> {
+    let app_dir = app_path
+        .parent()
+        .ok_or_else(|| match lang {
+            Language::Vi => "[CliDesk] Không thể xác định thư mục app.".to_string(),
+            Language::En => "[CliDesk] Failed to resolve app directory.".to_string(),
+        })?;
+
+    // Use std::process::Command so Windows path quoting is handled by Rust.
+    let mut child = process::Command::new(app_path)
+        .current_dir(app_dir)
+        .env("CLIDESK_LAUNCH_LANG", lang.code())
+        .spawn()
+        .map_err(|err| match lang {
+            Language::Vi => format!(
+                "[CliDesk] Không thể mở app CliDesk.\n[CliDesk] Path: {}\n[CliDesk] Lỗi: {}",
+                app_path.display(),
+                err
+            ),
+            Language::En => format!(
+                "[CliDesk] Failed to open CliDesk.\n[CliDesk] Path: {}\n[CliDesk] Error: {}",
+                app_path.display(),
+                err
+            ),
+        })?;
+
+    unsafe {
+        // Create Job Object with unique name
+        let job_name = format!("Local\\CliDeskJob_{}", process::id());
+        let job_name_wide = to_wide(&job_name);
+        let job = CreateJobObjectW(std::ptr::null(), job_name_wide.as_ptr());
+        if job.is_null() {
+            let err = io::Error::last_os_error();
+            let _ = child.kill();
+            let _ = child.wait();
+            return Err(match lang {
+                Language::Vi => format!(
+                    "[CliDesk] Không thể tạo Windows Job Object.\n[CliDesk] Lỗi: {}",
+                    err
+                ),
+                Language::En => format!(
+                    "[CliDesk] Failed to create Windows Job Object.\n[CliDesk] Error: {}",
+                    err
+                ),
+            });
+        }
+
+        // Set KILL_ON_JOB_CLOSE
+        let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = mem::zeroed();
+        info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+        let ret = SetInformationJobObject(
+            job,
+            JobObjectExtendedLimitInformation,
+            &mut info as *mut _ as LPVOID,
+            mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as DWORD,
+        );
+        if ret == FALSE {
+            let err = io::Error::last_os_error();
+            let _ = child.kill();
+            let _ = child.wait();
+            CloseHandle(job);
+            return Err(match lang {
+                Language::Vi => format!(
+                    "[CliDesk] Không thể cấu hình Windows Job Object.\n[CliDesk] Lỗi: {}",
+                    err
+                ),
+                Language::En => format!(
+                    "[CliDesk] Failed to configure Windows Job Object.\n[CliDesk] Error: {}",
+                    err
+                ),
+            });
+        }
+
+        // Assign process to job
+        let process_handle = child.as_raw_handle() as HANDLE;
+        let ret = AssignProcessToJobObject(job, process_handle);
+        if ret == FALSE {
+            let err = io::Error::last_os_error();
+            let _ = child.kill();
+            let _ = child.wait();
+            CloseHandle(job);
+            return Err(match lang {
+                Language::Vi => format!(
+                    "[CliDesk] Không thể gán CliDesk vào Windows Job Object.\n[CliDesk] Path: {}\n[CliDesk] Lỗi: {}",
+                    app_path.display(),
+                    err
+                ),
+                Language::En => format!(
+                    "[CliDesk] Failed to assign CliDesk to Windows Job Object.\n[CliDesk] Path: {}\n[CliDesk] Error: {}",
+                    app_path.display(),
+                    err
+                ),
+            });
+        }
+
+        Ok((job, child))
     }
-
-    // Set KILL_ON_JOB_CLOSE
-    let mut info: JOBOBJECT_EXTENDED_LIMIT_INFORMATION = mem::zeroed();
-    info.BasicLimitInformation.LimitFlags = JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
-    let ret = SetInformationJobObject(
-        job,
-        JobObjectExtendedLimitInformation,
-        &mut info as *mut _ as LPVOID,
-        mem::size_of::<JOBOBJECT_EXTENDED_LIMIT_INFORMATION>() as DWORD,
-    );
-    if ret == FALSE {
-        CloseHandle(job);
-        panic!("SetInformationJobObject failed");
-    }
-
-    // Create process
-    let app_cmd = format!("\"{}\"", app_path);
-    let app_wide = to_wide(&app_cmd);
-
-    let mut si: STARTUPINFOW = mem::zeroed();
-    si.cb = mem::size_of::<STARTUPINFOW>() as DWORD;
-
-    let mut pi: PROCESS_INFORMATION = mem::zeroed();
-
-    let ret = CreateProcessW(
-        app_wide.as_ptr(),
-        std::ptr::null(),
-        std::ptr::null(),
-        std::ptr::null(),
-        FALSE,
-        CREATE_NO_WINDOW,
-        std::ptr::null_mut(),
-        std::ptr::null(),
-        &si,
-        &mut pi,
-    );
-    if ret == FALSE {
-        CloseHandle(job);
-        panic!("CreateProcessW failed for '{}'", app_path);
-    }
-
-    // Assign to job
-    let ret = AssignProcessToJobObject(job, pi.hProcess);
-    if ret == FALSE {
-        TerminateProcess(pi.hProcess, 1);
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
-        CloseHandle(job);
-        panic!("AssignProcessToJobObject failed");
-    }
-
-    // Close thread handle — only need process handle
-    CloseHandle(pi.hThread);
-
-    (job, pi.hProcess)
 }
 
 // ── Hidden mode ────────────────────────────────────────────────
-fn run_hidden(app_path: &str) {
-    unsafe {
-        let hwnd = GetConsoleWindow();
-        if !hwnd.is_null() {
-            ShowWindow(hwnd, SW_HIDE);
+fn run_hidden(app_path: &Path, lang: Language) {
+    match spawn_in_job(app_path, lang) {
+        Ok((job, mut child)) => {
+            unsafe {
+                let hwnd = GetConsoleWindow();
+                if !hwnd.is_null() {
+                    ShowWindow(hwnd, SW_HIDE);
+                }
+            }
+            let _ = child.wait();
+            unsafe {
+                CloseHandle(job);
+            }
         }
-    }
-
-    let (job, process) = unsafe { spawn_in_job(app_path) };
-
-    unsafe {
-        WaitForSingleObject(process, INFINITE);
-    }
-
-    unsafe {
-        CloseHandle(process);
-        CloseHandle(job);
+        Err(msg) => {
+            eprintln!("{}", msg);
+            process::exit(1);
+        }
     }
 }
 
 // ── Visible mode ───────────────────────────────────────────────
-fn run_visible(app_path: &str) {
-    println!("[CliDesk] Đang khởi động CliDesk...");
-    println!("[CliDesk] Terminal này sẽ đợi CliDesk kết thúc.");
-    println!("[CliDesk] Đóng cửa sổ terminal này sẽ buộc đóng CliDesk.");
+fn run_visible(app_path: &Path, lang: Language) {
+    match lang {
+        Language::Vi => {
+            println!("[CliDesk] Đang khởi động CliDesk...");
+            println!("[CliDesk] Terminal này sẽ đợi CliDesk kết thúc.");
+            println!("[CliDesk] Đóng cửa sổ terminal này sẽ buộc đóng CliDesk.");
+        }
+        Language::En => {
+            println!("[CliDesk] Starting CliDesk...");
+            println!("[CliDesk] This terminal will wait until CliDesk exits.");
+            println!("[CliDesk] Closing this terminal will close CliDesk.");
+        }
+    }
     println!();
 
-    let (job, process) = unsafe { spawn_in_job(app_path) };
-
-    unsafe {
-        WaitForSingleObject(process, INFINITE);
+    match spawn_in_job(app_path, lang) {
+        Ok((job, mut child)) => {
+            let _ = child.wait();
+            unsafe {
+                CloseHandle(job);
+            }
+            println!();
+            println!("{}", match lang {
+                Language::Vi => "[CliDesk] Ứng dụng đã đóng.",
+                Language::En => "[CliDesk] App closed.",
+            });
+        }
+        Err(msg) => {
+            eprintln!("{}", msg);
+            process::exit(1);
+        }
     }
-
-    unsafe {
-        CloseHandle(process);
-        CloseHandle(job);
-    }
-
-    println!();
-    println!("[CliDesk] Ứng dụng đã đóng.");
 }

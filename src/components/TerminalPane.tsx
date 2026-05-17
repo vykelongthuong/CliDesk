@@ -3,14 +3,12 @@ import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { Unicode11Addon } from '@xterm/addon-unicode11';
 import '@xterm/xterm/css/xterm.css';
-import type { Project, Language, TerminalTab } from '../types';
+import type { Project, Language, TerminalTab, TerminalExitEvent } from '../types';
 import { listen } from '@tauri-apps/api/event';
 import { getProjectColor } from '../lib/projectColors';
 import { spawnTerminal, writeTerminal, resizeTerminal, closeTerminal } from '../lib/commands';
 import { translate } from '../lib/i18n';
 import { normalizeError } from '../lib/utils';
-
-const DEBUG_TERMINAL_RENDER = false;
 
 const waitForStableLayout = () =>
   new Promise<void>((resolve) => {
@@ -132,26 +130,6 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
     return isElementVisible(terminalRefs.current[tempId]);
   }, [isElementVisible]);
 
-  const debugTerminalSize = useCallback((tempId: string, label: string, cols: number, rows: number) => {
-    if (!DEBUG_TERMINAL_RENDER) return;
-
-    const container = terminalRefs.current[tempId];
-    const instance = terminalInstances.current[tempId];
-    console.debug('[TerminalPane:render]', {
-      label,
-      tempId,
-      realId: realIdsRef.current[tempId],
-      containerWidth: container?.clientWidth ?? 0,
-      containerHeight: container?.clientHeight ?? 0,
-      cols,
-      rows,
-      fontFamily: instance?.term.options.fontFamily,
-      fontSize: instance?.term.options.fontSize,
-      lineHeight: instance?.term.options.lineHeight,
-      unicodeVersion: instance?.term.unicode.activeVersion,
-    });
-  }, []);
-
   const fitTerminal = useCallback((tempId: string) => {
     const instance = terminalInstances.current[tempId];
     const container = terminalRefs.current[tempId];
@@ -179,10 +157,9 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
 
     if (!last || last.cols !== cols || last.rows !== rows) {
       lastDimsRef.current[tempId] = { cols, rows };
-      debugTerminalSize(tempId, 'resize', cols, rows);
       await resizeTerminal(realId, cols, rows);
     }
-  }, [debugTerminalSize, fitTerminal, isTerminalVisible]);
+  }, [fitTerminal, isTerminalVisible]);
 
   const scheduleFitAndResize = useCallback((tempId: string) => {
     const previousFrame = resizeFrameRef.current[tempId];
@@ -381,7 +358,6 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
         try {
           await waitForStableLayout();
           const initialSize = fitTerminal(id);
-          debugTerminalSize(id, 'spawn', initialSize.cols, initialSize.rows);
 
           const session = await spawnTerminal(
             tab.projectId,
@@ -396,10 +372,7 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
           decoderRef.current[id] = new TextDecoder('utf-8', { fatal: false });
           const spawnSize = fitTerminal(id);
           lastDimsRef.current[id] = spawnSize;
-          debugTerminalSize(id, 'spawn-resize', spawnSize.cols, spawnSize.rows);
           await resizeTerminal(realId, spawnSize.cols, spawnSize.rows);
-
-          console.log(`[TerminalPane] Spawned terminal: tempId=${id}, realId=${realId}`);
 
           // Handle user input → send to backend
           const disposeInput = term.onData((data) => {
@@ -431,11 +404,11 @@ const TerminalPane: React.FC<TerminalPaneProps> = ({
           );
 
           // Listen for terminal exit events
-          const unlistenExit = await listen(
+          const unlistenExit = await listen<TerminalExitEvent>(
             `terminal://exit/${realId}`,
-            (event: any) => {
+            (event) => {
               const payload = event.payload;
-              const exitCode = payload.exitCode ?? payload.exit_code ?? 'unknown';
+              const exitCode = payload.exitCode ?? 'unknown';
               const decoder = decoderRef.current[id];
               const remaining = decoder?.decode();
               if (remaining) {

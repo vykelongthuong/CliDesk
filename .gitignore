@@ -12,6 +12,7 @@ src-tauri/gen/schemas/
 # ── Build artifacts ──────────────────────────────────
 *.exe
 *.msi
+*.tgz
 *.deb
 *.rpm
 *.AppImage
@@ -52,3 +53,4 @@ elevated_test.bat
 
 # ── Terminal output (app never saves logs) ───────────
 terminal_dashboard_ai_docs/
+npmclideskvendor/

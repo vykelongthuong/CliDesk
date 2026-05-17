@@ -1,8 +1,16 @@
 ﻿import React, { useState, useCallback, useEffect, useRef } from 'react';
 import Sidebar from './components/Sidebar';
 import Workspace from './components/Workspace';
-import type { Project, Language } from './types';
-import { listProjects, hideWindow, quitApp, getSettings } from './lib/commands';
+import type { Project, Language, AppRuntimeInfo } from './types';
+import {
+  listProjects,
+  hideWindow,
+  quitApp,
+  getSettings,
+  setSetting,
+  getAppRuntimeInfo,
+  updateCliDeskFromNpm,
+} from './lib/commands';
 import { listen } from '@tauri-apps/api/event';
 import { translate } from './lib/i18n';
 
@@ -13,6 +21,8 @@ const App: React.FC = () => {
   const [activeProjectId, setActiveProjectId] = useState<string | null>(null);
   const [activeTab, setActiveTab] = useState<TabId>('terminals');
   const [closeDialogOpen, setCloseDialogOpen] = useState(false);
+  const [runtimeInfo, setRuntimeInfo] = useState<AppRuntimeInfo | null>(null);
+  const [updateState, setUpdateState] = useState<'idle' | 'updating' | 'success' | 'error'>('idle');
   const dialogShownRef = useRef(false);
   const [sidebarCollapsed, setSidebarCollapsed] = useState<boolean>(() => {
     try {
@@ -23,20 +33,40 @@ const App: React.FC = () => {
   });
   const [lang, setLang] = useState<Language>('vi');
 
-  // Load language from backend settings on mount
+  const loadRuntimeInfo = useCallback(async () => {
+    try {
+      const info = await getAppRuntimeInfo();
+      setRuntimeInfo(info);
+      return info;
+    } catch (err) {
+      console.error('Failed to load runtime info:', err);
+      return null;
+    }
+  }, []);
+
+  // Load launch metadata and language from backend settings on mount
   useEffect(() => {
     (async () => {
+      const info = await loadRuntimeInfo();
       try {
         const settings = await getSettings();
         const savedLang = settings['ui.language'];
-        if (savedLang === 'en' || savedLang === 'vi') {
+        const launchLang = info?.launch_language;
+
+        if (launchLang === 'en' || launchLang === 'vi') {
+          setLang(launchLang);
+          if (savedLang !== launchLang) {
+            await setSetting('ui.language', launchLang);
+          }
+        } else if (savedLang === 'en' || savedLang === 'vi') {
           setLang(savedLang);
         }
-      } catch {
+      } catch (err) {
+        console.error('Failed to load language setting:', err);
         // Default to Vietnamese
       }
     })();
-  }, []);
+  }, [loadRuntimeInfo]);
 
   const loadProjects = useCallback(async () => {
     try {
@@ -113,6 +143,20 @@ const App: React.FC = () => {
     setLang(newLang);
   }, []);
 
+  const handleUpdateCliDesk = useCallback(async () => {
+    if (updateState === 'updating') return;
+
+    setUpdateState('updating');
+    try {
+      await updateCliDeskFromNpm();
+      setUpdateState('success');
+      await loadRuntimeInfo();
+    } catch (err) {
+      console.error('Failed to update CliDesk:', err);
+      setUpdateState('error');
+    }
+  }, [loadRuntimeInfo, updateState]);
+
   const activeProject = projects.find(p => p.id === activeProjectId) || null;
 
   const t = useCallback((key: string) => translate(key, lang), [lang]);
@@ -128,6 +172,9 @@ const App: React.FC = () => {
         onToggleCollapse={handleToggleSidebar}
         onSettingsClick={handleSettingsClick}
         lang={lang}
+        runtimeInfo={runtimeInfo}
+        updateState={updateState}
+        onUpdateCliDesk={handleUpdateCliDesk}
       />
       <Workspace
         activeProject={activeProject}
@@ -135,6 +182,9 @@ const App: React.FC = () => {
         onTabChange={setActiveTab}
         lang={lang}
         onLanguageChange={handleLanguageChange}
+        runtimeInfo={runtimeInfo}
+        updateState={updateState}
+        onUpdateCliDesk={handleUpdateCliDesk}
       />
 
       {closeDialogOpen && (

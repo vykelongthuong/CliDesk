@@ -4,6 +4,7 @@ version = "0.1.0"
 description = "CliDesk - Local desktop dashboard for managing terminal sessions"
 authors = ["PC"]
 edition = "2021"
+default-run = "clidesk"
 
 [lib]
 name = "clidesk_lib"

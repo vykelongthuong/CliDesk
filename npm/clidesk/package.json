@@ -1,11 +1,11 @@
 {
   "name": "clidesk",
-  "version": "0.1.0",
+  "version": "0.1.4",
   "description": "CliDesk desktop app launcher — install with npm i -g clidesk",
   "license": "Apache-2.0",
   "repository": {
     "type": "git",
-    "url": "https://github.com/vykelongthuong/CliDesk"
+    "url": "git+https://github.com/vykelongthuong/CliDesk.git"
   },
   "bin": {
     "clidesk": "bin/clidesk.js"
@@ -22,7 +22,8 @@
     "bin",
     "scripts",
     "vendor",
-    "README.md"
+    "README.md",
+    "LICENSE"
   ],
   "keywords": [
     "clidesk",

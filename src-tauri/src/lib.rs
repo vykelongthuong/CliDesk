@@ -8,6 +8,7 @@ mod services;
 
 use commands::project_commands::DbState;
 use commands::terminal_commands::TerminalState;
+use services::settings_service::SettingsService;
 use services::terminal_service::TerminalService;
 use std::sync::Mutex;
 use tauri::Emitter;
@@ -24,6 +25,13 @@ pub fn run() {
             // Initialize database
             let db_path = db::get_db_path(&app.handle());
             let conn = db::init_database(&db_path)?;
+            if let Ok(lang) = std::env::var("CLIDESK_LAUNCH_LANG") {
+                if lang == "vi" || lang == "en" {
+                    if let Err(err) = SettingsService::set(&conn, "ui.language", &lang) {
+                        log::warn!("Failed to apply launcher language: {}", err);
+                    }
+                }
+            }
             app.manage(DbState(Mutex::new(Some(conn))));
 
             // Initialize terminal service
@@ -111,6 +119,8 @@ pub fn run() {
             commands::git_commands::git_diff,
             commands::settings_commands::settings_get,
             commands::settings_commands::settings_set,
+            commands::app_commands::app_runtime_info,
+            commands::app_commands::app_update_from_npm,
             commands::tray_commands::window_hide,
             commands::tray_commands::window_show,
             commands::tray_commands::quit_app,

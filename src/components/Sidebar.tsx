@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import type { Project, Language } from '../types';
+import type { Project, Language, AppRuntimeInfo } from '../types';
 import { addProject, removeProject } from '../lib/commands';
 import { open } from '@tauri-apps/plugin-dialog';
 import { getProjectColor } from '../lib/projectColors';
@@ -14,6 +14,9 @@ interface SidebarProps {
   onToggleCollapse: () => void;
   onSettingsClick: () => void;
   lang: Language;
+  runtimeInfo: AppRuntimeInfo | null;
+  updateState: 'idle' | 'updating' | 'success' | 'error';
+  onUpdateCliDesk: () => void;
 }
 
 const Sidebar: React.FC<SidebarProps> = ({
@@ -25,6 +28,9 @@ const Sidebar: React.FC<SidebarProps> = ({
   onToggleCollapse,
   onSettingsClick,
   lang,
+  runtimeInfo,
+  updateState,
+  onUpdateCliDesk,
 }) => {
   const [isAdding, setIsAdding] = useState(false);
 
@@ -130,6 +136,29 @@ const Sidebar: React.FC<SidebarProps> = ({
           </ul>
         )}
       </nav>
+
+      {!collapsed && runtimeInfo && (
+        <div className={`sidebar-version${runtimeInfo.update_available ? ' has-update' : ''}`}>
+          <div className="sidebar-version-row">
+            <span>{t('version.current')}</span>
+            <strong>{runtimeInfo.current_version}</strong>
+          </div>
+          {runtimeInfo.update_available && (
+            <>
+              <div className="sidebar-version-note">
+                {t('version.update_available_short')} {runtimeInfo.latest_version || ''}
+              </div>
+              <button
+                className="sidebar-update-btn"
+                onClick={onUpdateCliDesk}
+                disabled={updateState === 'updating'}
+              >
+                {updateState === 'updating' ? t('version.updating') : t('version.update')}
+              </button>
+            </>
+          )}
+        </div>
+      )}
 
       {/* Settings gear button */}
       <button

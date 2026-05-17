@@ -8,6 +8,8 @@ import type {
   FileWriteResult,
   GitStatus,
   GitDiffResult,
+  AppRuntimeInfo,
+  UpdateResult,
 } from '../types';
 
 // Project commands
@@ -101,6 +103,15 @@ export async function getSettings(): Promise<Record<string, string>> {
 
 export async function setSetting(key: string, value: string): Promise<void> {
   await invoke('settings_set', { key, value });
+}
+
+// App/runtime commands
+export async function getAppRuntimeInfo(): Promise<AppRuntimeInfo> {
+  return invoke('app_runtime_info');
+}
+
+export async function updateCliDeskFromNpm(): Promise<UpdateResult> {
+  return invoke('app_update_from_npm');
 }
 
 // Window/Tray commands

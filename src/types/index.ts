@@ -86,6 +86,19 @@ export interface AppError {
   message: string;
 }
 
+export interface AppRuntimeInfo {
+  current_version: string;
+  latest_version: string | null;
+  update_available: boolean;
+  launch_language: Language | null;
+  update_command: string;
+}
+
+export interface UpdateResult {
+  ok: boolean;
+  message: string;
+}
+
 export interface TerminalOutputEvent {
   terminalId: string;
   data: string;
