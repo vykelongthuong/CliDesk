@@ -1,11 +1,15 @@
 {
   "name": "clidesk",
-  "version": "0.1.6",
-  "description": "CliDesk desktop app launcher — install with npm i -g clidesk",
+  "version": "0.1.8",
+  "description": "Local desktop dashboard for project-based terminals and AI coding CLI tools.",
   "license": "Apache-2.0",
+  "homepage": "https://github.com/vykelongthuong/CliDesk#readme",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/vykelongthuong/CliDesk.git"
+  },
+  "bugs": {
+    "url": "https://github.com/vykelongthuong/CliDesk/issues"
   },
   "bin": {
     "clidesk": "bin/clidesk.js"
@@ -27,9 +31,14 @@
   ],
   "keywords": [
     "clidesk",
-    "desktop",
-    "dashboard",
     "terminal",
-    "tauri"
+    "terminal-dashboard",
+    "ai-cli",
+    "coding-agent",
+    "developer-tools",
+    "tauri",
+    "xterm",
+    "git",
+    "desktop-app"
   ]
 }
