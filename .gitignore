@@ -37,6 +37,12 @@ lerna-debug.log*
 Thumbs.db
 elevated_test.bat
 
+# ── Local-only helper / AI agent files ────────────────
+run-dev.bat
+run-dev.sh
+AI_AGENT_PROMPT_TEMPLATE.md
+AGENTS.md
+
 # ── AI assistant config ──────────────────────────────
 .claude/
 .deepseek/
