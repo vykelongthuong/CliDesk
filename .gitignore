@@ -55,6 +55,10 @@ ehthumbs.db
 
 # ── AI agent docs (local-only, not for GitHub) ───────
 .agent-docs/
+local-docs/
+AI_AGENT_PROMPT_TEMPLATE.md
+AGENTS.md
+*.local.md
 
 # ── AI assistant config ──────────────────────────────
 .claude/
